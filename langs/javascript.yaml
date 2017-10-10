@@ -1,0 +1,132 @@
+extension: js
+casing:
+  class: pascal_case
+  method: camel_case
+primitiveTypes:
+  void: void
+  boolean: bool
+  string: string
+  number: number
+  any: object
+functions:
+  OneConsole.print:
+    template: "console.log({{str}})"
+  OneArray.add:
+    template: "{{self}}.push({{item}})"
+  OneArray.length:
+    template: "{{self}}.length"
+  OneArray.get:
+    template: "{{self}}[{{index}}]"
+  OneArray.set:
+    template: "{{self}}[{{index}}] = {{value}}"
+  OneMap.keys:
+    template: "Object.keys({{self}})"
+  OneMap.values:
+    template: "Object.values({{self}})"
+  OneMap.remove:
+    template: "delete {{self}}[{{key}}]"
+  OneMap.hasKey:
+    template: "{{key}} in {{self}}"
+  OneMap.get:
+    template: "{{self}}[{{key}}]"
+  OneMap.set:
+    template: "{{self}}[{{key}}] = {{value}}"
+templates:
+  testGenerator: |-
+    console.log(new {{class}}().{{method}}());
+
+  main: |-
+    {{for class in classes|sep=\n\n}}
+      class {{class.name}} {
+        {{for method in class.methods|sep=\n\n}}
+          {{method.name}}({{genArgs(method)}}) {
+            {{genBody(method.body)}}
+          }
+        {{/for}}
+      }
+    {{/for}}
+
+  genBody:
+    args:
+      - name: body
+    template: |-
+      {{for statement in body.statements|sep=\n}}
+        {{statement.leadingTrivia}}{{gen(statement)}}
+      {{/for}}
+
+  genArgs:
+    args:
+      - name: method
+    template: |-
+      {{for param in method.parameters|sep=", "}}
+        {{param.name}}
+      {{/for}}
+  genParams:
+    args:
+      - name: params
+    template: |-
+      {{for param in params|sep=", " inline}}
+        {{gen(param)}}
+      {{/for}}
+  genVar:
+    args:
+      - name: itemVar
+    template: "{{if itemVar.isMutable}}let{{else}}const{{/if}} {{itemVar.name}} = {{gen(itemVar.initializer)}}"
+expressions:
+  call: |-
+    {{gen(expr.method)}}(
+      {{for arg in expr.arguments|sep=", " inline}}
+        {{gen(arg)}}
+      {{/for}}
+    )
+  propertyAccess: "{{gen(expr.object)}}.{{gen(expr.propertyName)}}"
+  identifier: "{{expr.text}}"
+  stringLiteral: "\"{{expr.value}}\""
+  nullLiteral: "null"
+  return: "return {{gen(expr.expression)}};"
+  binary: "{{gen(expr.left)}} {{expr.operator}} {{gen(expr.right)}}"
+  postfix: "{{gen(expr.operand)}}{{expr.operator}}"
+  prefix: "{{expr.operator}}{{gen(expr.operand)}}"
+  parenthesized: "({{gen(expr.expression)}})"
+  numericLiteral: "{{expr.value}}"
+  variableDeclaration: "{{genVar(expr)}};"
+  new: "new {{gen(expr.class)}}({{genParams(expr.arguments)}})"
+  classReference: "{{expr.classRef.name}}"
+  arrayLiteral: "[{{genParams(expr.items)}}]"
+  mapLiteral: |- 
+    {
+      {{for prop in expr.properties|sep=",\n"}}
+        {{prop.name}}: {{gen(prop.initializer)}}
+      {{/for}}
+    }
+  expressionStatement: "{{gen(expr.expression)}};"
+  instanceMethod: "{{gen(expr.thisExpr)}}.{{expr.methodRef.name}}"
+  staticMethod: "{{expr.methodRef.classRef.name}}.{{expr.methodRef.name}}"
+  localVar: "{{expr.varRef.name}}"
+  methodArgument: "{{expr.varRef.name}}"
+  instanceField: "{{gen(expr.thisExpr)}}.{{expr.varRef.name}}"
+  falseLiteral: "false"
+  trueLiteral: "true"
+  elementAccess: "{{gen(expr.object)}}[{{gen(expr.elementExpr)}}]"
+  thisReference: this
+  foreach: |-
+    for (const {{expr.itemVariable.name}} of {{gen(expr.items)}}) {
+        {{genBody(expr.body)}}
+    }
+  for: |-
+    for ({{genVar(expr.itemVariable)}}; {{gen(expr.condition)}}; {{gen(expr.incrementor)}}) {
+        {{genBody(expr.body)}}
+    }
+  if: |-
+    if ({{gen(expr.condition)}}) {
+        {{genBody(expr.then)}}
+    }
+    {{if expr.else|inline}}
+      {{if isIfBlock(expr.else)}}
+        \ else\ {{genBody(expr.else)|inline}}
+      {{else}}
+        \ else {
+            {{genBody(expr.else)}}
+        }
+      {{/if}}
+    {{/if}}

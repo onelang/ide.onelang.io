@@ -1,0 +1,38 @@
+<html>
+<head>
+    <link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-base.css" />
+    <link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-dark-theme.css" />
+
+    <script src="js/Utils/Extensions.js"></script>
+    <script src="node_modules/yamljs/dist/yaml.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.5/require.min.js"></script>
+    <style>
+        .editorDiv { height:100%; display: flex; min-height: 100%; flex-direction: column; }
+        .editorDiv .aceEditor { flex: 1; }
+        .editorDiv .statusBar { color: white; height: 17px; margin: 2px 4px 0px 4px; font-family: arial; font-size: 13px; }
+        span.label { padding: 1px 4px; border-radius: 5px; font-size: 11px; font-weight: bold; margin-right:3px; }
+        span.label.success { background: #0a0; }
+        span.label.error { background: #f00; }
+        span.label.waiting { background: #aaa; }
+        span.result { position: relative; top: 1px; }
+    </style>
+    <script>
+        requirejs.config({
+            "baseUrl": "js/",
+            "paths": {
+                "jquery": "//code.jquery.com/jquery-3.2.1.min",
+                "goldenlayout": "//cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/goldenlayout.min",
+                "ace/ace": "//cdnjs.cloudflare.com/ajax/libs/ace/1.2.8/ace",
+                "typescript": "/lib/typescript",
+                "ts-simple-ast": "/lib/TsSimpleAst",
+            }
+        });
+
+        require(["typescript"], ts => {
+            require(["Browser"]);
+        });
+    </script>
+</head>
+<body>
+</body>
+</html>
