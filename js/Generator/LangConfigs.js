@@ -81,6 +81,7 @@
         },
         java: {
             port: 8001,
+            httpsEndpoint: "java",
             request: {
                 code: Utils_1.deindent(`
                 public class TestClass {
@@ -94,6 +95,7 @@
         },
         javascript: {
             port: 8002,
+            httpsEndpoint: "javascript",
             request: {
                 code: Utils_1.deindent(`
                 class TestClass {
@@ -135,6 +137,7 @@
         },
         php: {
             port: 8003,
+            httpsEndpoint: "php",
             request: {
                 lang: "PHP",
                 code: Utils_1.deindent(`
@@ -151,6 +154,7 @@
         },
         python: {
             port: 8004,
+            httpsEndpoint: "python",
             request: {
                 lang: "Python",
                 className: 'TestClass',
@@ -163,6 +167,7 @@
         },
         ruby: {
             port: 8005,
+            httpsEndpoint: "ruby",
             request: {
                 lang: "Ruby",
                 className: 'TestClass',
@@ -191,6 +196,7 @@
         },
         typescript: {
             port: 8002,
+            httpsEndpoint: "javascript",
             request: {
                 lang: "TypeScript",
                 className: 'TestClass',
