@@ -1,14 +1,18 @@
 import { OneAst as one } from "./Ast";
+import { LangFileSchema } from "../Generator/LangFileSchema";
 
 export class AstHelper {
     static replaceProperties<T>(dest, src: T): T {
+        const keep = ["nodeData"];
         dest.__proto__ = (<any>src).__proto__;
 
-        for (var i in dest) 
-            delete dest[i];
+        for (var i in dest)
+            if (!keep.includes(i))
+                delete dest[i];
 
-        for (var i of Object.keys(src)) 
-            dest[i] = src[i];
+        for (var i of Object.keys(src))
+            if (!keep.includes(i))
+                dest[i] = src[i];
 
         return dest;
     }
@@ -46,5 +50,18 @@ export class AstHelper {
         });
         
         return clone;
+    }
+
+    static getMethodFromRef(lang: LangFileSchema.LangFile, methodRef: one.MethodReference) {
+        if (methodRef.methodRef.body)
+            return methodRef.methodRef;
+
+        const metaPath = methodRef.methodRef.metaPath;
+        if (!metaPath) return null;
+
+        const methodPathParts = metaPath.split("/");
+        const cls = lang.classes[methodPathParts[0]];
+        const method = cls && cls.methods && cls.methods[methodPathParts[1]];
+        return method;
     }
 }

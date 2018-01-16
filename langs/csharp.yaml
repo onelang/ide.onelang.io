@@ -1,48 +1,100 @@
 extension: cs
-casing:
+casing: # based on https://msdn.microsoft.com/en-us/library/x2dbyw72(v=vs.71).aspx
   class: pascal_case
   method: pascal_case
+  enum: pascal_case
+  enumMember: pascal_case
+  variable: camel_case
+  field: pascal_case # TODO: private
+  property: pascal_case
 primitiveTypes:
   void: void
-  boolean: bool
-  string: string
-  number: int
   any: object
-array: '{{type}}[]'
-functions:
-  OneConsole.print:
-    includes: [System]
-    template: "Console.WriteLine({{str}})"
-  OneArray.add:
+classes:
+  OneString:
+    type: string
+    fields:
+      length:
+        template: "{{self}}.Length"
+    methods:
+      substring:
+        template: "{{self}}.Substring({{start}}, {{end}} - {{start}})"
+      split:
+        template: "{{self}}.Split(new[]{ {{separator}} }, StringSplitOptions.None)"
+      get:
+        template: "{{self}}[{{idx}}]"
+      replace:
+        template: "{{self}}.Replace({{from}}, {{to}})"
+      substrMatch:
+        template: "String.Compare({{self}}, {{offset}}, {{str}}, 0, ({{str}}).Length) == 0"
+  OneNumber:
+    type: int
+  OneBoolean:
+    type: bool
+  OneConsole:
+    methods:
+      print:
+        includes: [System]
+        template: "Console.WriteLine({{str}})"
+  OneArray:
+    type: "List<{{typeArgs[0]}}>"
     includes: [System.Collections.Generic]
-    template: "{{self}}.Add({{item}})"
-  OneArray.length:
-    template: "{{self}}.Count"
-  OneArray.get:
-    template: "{{self}}[{{index}}]"
-  OneArray.set:
-    template: "{{self}}[{{index}}] = {{value}}"
-  OneMap.keys:
+    fields:
+      length:
+        template: "{{self}}.Count"
+    methods:
+      add: 
+        template: "{{self}}.Add({{item}})"
+      get: 
+        template: "{{self}}[{{index}}]"
+      set: 
+        template: "{{self}}[{{index}}] = {{value}}"
+  OneMap:
     includes: [System.Linq]
-    template: "{{self}}.Keys.ToArray()"
-  OneMap.values:
-    includes: [System.Linq]
-    template: "{{self}}.Values.ToArray()"
-  OneMap.remove:
-    template: "{{self}}.Remove({{key}})"
-  OneMap.hasKey:
-    template: "{{self}}.ContainsKey({{key}})"
-  OneMap.get:
-    template: "{{self}}[{{key}}]"
-  OneMap.set:
-    template: "{{self}}[{{key}}] = {{value}}"
+    methods:
+      keys: 
+        template: "{{self}}.Keys.ToArray()"
+      values: 
+        template: "{{self}}.Values.ToArray()"
+      remove: 
+        template: "{{self}}.Remove({{key}})"
+      hasKey: 
+        template: "{{self}}.ContainsKey({{key}})"
+      get: 
+        template: "{{self}}[{{key}}]"
+      set: 
+        template: "{{self}}[{{key}}] = {{value}}"
+  OneFile:
+    includes: [System.IO]
+    methods:
+      readText:
+        template: "File.ReadAllText({{fn}})"
+  OneError:
+    includes: [System]
+    methods:
+      raise:
+        template: throw new Exception({{message}})
+  OneMethod:
+    methods:
+      call:
+        template: "{{self}}.Call({{obj}}, ({{args}}).ToArray())"
+operators:
+  OneString + OneBoolean:
+    template: '{{gen(left)}} + ({{gen(right)}} ? "true" : "false")'
 templates:
   testGenerator: |-
     public class Program
     {
         static public void Main()
         {
-            Console.WriteLine(new {{class}}().{{method}}());
+            try 
+            {
+                new {{class}}().{{method}}();
+            }
+            catch (System.Exception e)
+            {
+                System.Console.WriteLine($"Exception: {e.Message}");
+            }
         }
     }
 
@@ -51,21 +103,69 @@ templates:
       using {{inc}};
     {{/for}}
 
-    {{for class in classes|sep=\n\n}}
-      public class {{class.name}}
+    {{for enum in enums|sep=\n}}
+      public enum {{enum.name}} { 
+      {{for item in enum.values|inline sep=", "}}
+        {{item.name}}
+      {{/for}}
+       }
+    {{/for}}
+
+    {{for interface in interfaces|sep=\n\n}}
+      public interface {{genTypeArgs(interface)}}
       {
+          {{for method in interface.methods|sep="\n    \n"}}
+            {{method.returnType}} {{method.name}}({{genArgs(method)}});
+          {{/for}}
+      }
+    {{/for}}
+    
+    {{for class in classes|sep=\n\n}}
+      public class {{genTypeArgs(class)}}
+      {
+          {{if class.reflect}}
+            static {{class.name}}()
+            {
+                OneReflect.Publish(typeof({{class.name}}));
+            }
+          {{/if}}
+
           {{for field in class.fields|sep=\n}}
-            {{field.visibility}} {{field.type}} {{field.name}};
+            {{field.visibility}} {{if field.static}}static {{/if}}{{field.type}} {{field.name}}{{if field.initializer}} = {{gen(field.initializer)}}{{/if}};
           {{/for}}
 
-          {{for method in class.methods|sep=\n\n}}
-            {{method.visibility}} {{method.returnType}} {{method.name}}({{genArgs(method)}})
+          {{if class.constructor}}
+            public {{class.name}}({{genArgs(class.constructor)}})
+            {
+                {{genBody(class.constructor.body)}}
+            }
+          {{/if}}
+
+          {{for method in class.methods|sep="\n    \n"}}
+            {{method.visibility}} {{if method.attributes["virtual"]}}virtual {{/if}}{{if method.attributes["override"]}}override {{/if}}{{if method.static}}static {{/if}}{{method.returnType}} {{method.name}}({{genArgs(method)}})
             {
                 {{genBody(method.body)}}
             }
           {{/for}}
       }
     {{/for}}
+  genTypeArgs:
+    args: [{name: class}]
+    template: |-
+      {{class.name}}
+      {{if class.typeArguments|inline}}
+        <
+        {{for arg in class.typeArguments|inline sep=", "}}
+          {{arg}}
+        {{/for}}
+        >
+      {{/if}}
+      {{if class.baseClasses.length > 0|inline}}
+        : 
+        {{for item in class.baseClasses|inline sep=", "}}
+          {{item}}
+        {{/for}}
+      {{/if}}
   genBody:
     args:
       - name: body
@@ -90,45 +190,88 @@ templates:
   genVar:
     args:
       - name: itemVar
-    template: "{{if itemVar.isUnused}}// UNUSED: {{/if}}var {{itemVar.name}} = {{gen(itemVar.initializer)}}"
+    template: "{{if itemVar.isUnused}}/* UNUSED: {{/if}}var {{itemVar.outName}} = {{if itemVar.isUnused}}*/ {{/if}}{{gen(itemVar.initializer)}}"
 expressions:
   call: "{{gen(expr.method)}}({{genParams(expr.arguments)}})"
   propertyAccess: "{{gen(expr.object)}}.{{gen(expr.propertyName)}}"
   identifier: "{{expr.text}}"
-  stringLiteral: "\"{{expr.value}}\""
+  stringLiteral: '"{{expr.escapedText}}"'
+  characterLiteral: "'{{expr.escapedTextSingle}}'"
   numericLiteral: "{{expr.value}}"
   nullLiteral: "null"
-  return: "return {{gen(expr.expression)}};"
+  return: "return{{if expr.expression}} {{gen(expr.expression)}}{{/if}};"
   binary: "{{gen(expr.left)}} {{expr.operator}} {{gen(expr.right)}}"
   postfix: "{{gen(expr.operand)}}{{expr.operator}}"
   prefix: "{{expr.operator}}{{gen(expr.operand)}}"
+  throw: "throw {{gen(expr.expression)}};"
   parenthesized: "({{gen(expr.expression)}})"
   variableDeclaration: "{{genVar(expr)}};"
-  new: "new {{gen(expr.class)}}({{genParams(expr.arguments)}})"
-  classReference: "{{expr.classRef.name}}"
-  arrayLiteral: "new List<{{expr.typeArgs[0]}}> { {{genParams(expr.items)}} }"
-  mapLiteral: |- 
-    new Dictionary<{{expr.typeArgs[0]}}, {{expr.typeArgs[1]}}> {
-      {{for prop in expr.properties|sep=",\n"}}
-        { "{{prop.name}}", {{gen(prop.initializer)}} }
+  new: |-
+    new {{gen(expr.cls)}}
+    {{if expr.typeArguments.length > 0|inline}}
+      <
+      {{for arg in expr.typeArguments|inline sep=", "}}
+        {{typeName(arg)}}
       {{/for}}
-    }
+      >
+    {{/if}}
+    ({{genParams(expr.arguments)}})
+  classReference: "{{expr.classRef.outName}}"
+  enumReference: "{{expr.enumRef.outName}}"
+  enumMemberReference: "{{expr.enumRef.outName}}.{{expr.enumMemberRef.outName}}"
+  arrayLiteral:
+    includes: [System.Collections.Generic]
+    template: "new List<{{expr.typeArgs[0]}}> { {{genParams(expr.items)}} }"
+  mapLiteral:
+    includes: [System.Collections.Generic]
+    template: |- 
+      new Dictionary<{{expr.typeArgs[0]}}, {{expr.typeArgs[1]}}>
+      {
+        {{for prop in expr.properties|sep=",\n"}}
+          { "{{prop.name}}", {{gen(prop.initializer)}} }
+        {{/for}}
+      }
   expressionStatement: "{{gen(expr.expression)}};"
-  instanceMethod: "{{gen(expr.thisExpr)}}.{{expr.methodRef.name}}"
-  staticMethod: "{{expr.methodRef.classRef.name}}.{{expr.methodRef.name}}"
-  localVar: "{{expr.varRef.name}}"
-  methodArgument: "{{expr.varRef.name}}"
-  instanceField: "{{gen(expr.thisExpr)}}.{{expr.varRef.name}}"
+  instanceMethod: "{{gen(expr.thisExpr)}}.{{expr.methodRef.outName}}"
+  staticMethod: "{{expr.methodRef.classRef.outName}}.{{expr.methodRef.outName}}"
+  localVar: "{{expr.varRef.outName}}"
+  methodArgument: "{{expr.varRef.outName}}"
+  instanceField: "{{gen(expr.thisExpr)}}.{{expr.varRef.outName}}"
+  staticField: "{{if expr.thisExpr.exprKind != 'ThisReference'}}{{gen(expr.thisExpr)}}.{{/if}}{{expr.varRef.outName}}"
   falseLiteral: "false"
   trueLiteral: "true"
   elementAccess: "{{gen(expr.object)}}[{{gen(expr.elementExpr)}}]"
   thisReference: this
+  cast: "({{typeName(expr.newType)}})({{gen(expr.expression)}})"
+  conditional: "{{gen(expr.condition)}} ? {{gen(expr.whenTrue)}} : {{gen(expr.whenFalse)}}"
+  break: break;
+  templateString: |-
+    $"
+    {{for part in expr.parts|inline}}
+      {{if part.literal|inline}}
+        {{part.text}}
+      {{else}}
+        {{if part.expr.valueType.isBoolean|inline}}
+          {(({{gen(part.expr)}}) ? "true" : "false")}
+        {{else}}
+          {{{gen(part.expr)}}}
+        {{/if}}
+      {{/if}}
+    {{/for}}
+    "
   foreach: |-
-    foreach (var {{expr.itemVariable.name}} in {{gen(expr.items)}}) {
+    foreach (var {{expr.itemVariable.outName}} in {{gen(expr.items)}})
+    {
         {{genBody(expr.body)}}
     }
   for: |-
-    for ({{genVar(expr.itemVariable)}}; {{gen(expr.condition)}}; {{gen(expr.incrementor)}}) {
+    for ({{genVar(expr.itemVariable)}}; {{gen(expr.condition)}}; {{gen(expr.incrementor)}})
+    {
+        {{genBody(expr.body)}}
+    }
+  while: |-
+    while ({{gen(expr.condition)}})
+    {
         {{genBody(expr.body)}}
     }
   if: |-
@@ -138,7 +281,7 @@ expressions:
     }
     {{if expr.else}}
       {{if isIfBlock(expr.else)}}
-        else\ {{genBody(expr.else)|inline}}
+        else {{genBody(expr.else)|inline}}
       {{else}}
         else
         {

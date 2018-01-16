@@ -11,6 +11,11 @@ class TestClass {
         return mapObj["z"];
     }
 
+    explicitTypeTest() {
+        let op: string = "";
+        console.log(op.length);
+    }
+
     ifTest(x: number): string {
         let result = "<unk>";
 
@@ -76,9 +81,40 @@ class TestClass {
         const stuff = arg1 + arg2 + arg3 * this.calc();
         return stuff;
     }
+    
+    stringTest(): string {
+        var x = "x";
+        var y = "y";
 
-    testMethod(): number {
-        return this.mapTest();
+        var z = "z";
+        z += "Z";
+        z += x;
+        
+        return z + "|" + x + y;
+    }
+
+    reverseString(str: string): string {
+        let result = "";
+        for (let i = str.length - 1; i >= 0; i--)
+            result += str[i];
+        return result;
+    }
+
+    /*reverseString2(str: string): string {
+        let result = "";
+        for (const c of str)
+            result += c;
+        return result;
+    }*/
+
+    getBoolResult(value: boolean): boolean { return value; }
+
+    testMethod() {
+        this.arrayTest();
+        console.log(this.mapTest());
+        console.log(this.stringTest());
+        console.log(this.reverseString("print value"));
+        console.log(this.getBoolResult(true) ? "true" : "false");
     }
 }
 

@@ -47,7 +47,8 @@
             const ifContext = this.subContext(context, stmt, "if");
             this.visitExpression(stmt.condition, ifContext);
             this.visitBlock(stmt.then, this.subContext(ifContext, stmt.then, "then"));
-            this.visitBlock(stmt.else, this.subContext(ifContext, stmt.then, "else"));
+            if (stmt.else)
+                this.visitBlock(stmt.else, this.subContext(ifContext, stmt.then, "else"));
         }
         visitWhileStatement(stmt, context) {
             super.visitWhileStatement(stmt, this.subContext(context, stmt, "while"));
@@ -58,11 +59,14 @@
         visitForeachStatement(stmt, context) {
             super.visitForeachStatement(stmt, this.subContext(context, stmt, "foreach"));
         }
-        visitMethod(method, context) {
-            super.visitMethod(method, this.subContext(context, method));
+        visitMethodLike(method, context) {
+            super.visitMethodLike(method, this.subContext(context, method));
         }
         visitClass(cls, context) {
             super.visitClass(cls, this.subContext(context, cls));
+        }
+        visitInterface(intf, context) {
+            super.visitInterface(intf, this.subContext(context, intf));
         }
         transform(schemaCtx) {
             this.visitSchema(schemaCtx.schema, new Context());

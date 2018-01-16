@@ -21,9 +21,9 @@ export class FillParentTransform extends AstVisitor<any> implements ISchemaTrans
         super.visitBlock(block, block);
     }
 
-    protected visitMethod(method: one.Method, parent: any) { 
+    protected visitMethodLike(method: one.Method|one.Constructor, parent: any) { 
         method.classRef = parent;
-        super.visitMethod(method, method);
+        super.visitMethodLike(method, method);
     }
 
     protected visitField(field: one.Field, parent: any) { 
@@ -33,9 +33,14 @@ export class FillParentTransform extends AstVisitor<any> implements ISchemaTrans
 
     protected visitProperty(prop: one.Property, parent: any) { 
         prop.classRef = parent;
-        super.visitField(prop, parent);
+        super.visitProperty(prop, parent);
     }
 
+    protected visitInterface(intf: one.Interface, parent: any) {
+        intf.schemaRef = parent;
+        super.visitInterface(intf, intf);
+    }
+    
     protected visitClass(cls: one.Class, parent: any) {
         cls.schemaRef = parent;
         super.visitClass(cls, cls);

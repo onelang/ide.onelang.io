@@ -1,14 +1,9 @@
 ﻿// #region Array
-interface IThenBy<T> {
-    thenBy(selector: ((item: T) => any)): IThenBy<T>;
-    sort(): T[];
-}
-
 // tslint:disable-next-line
 interface Array<T> {
     last(): T;
     remove(item: T): void;
-    sortBy(selector: ((item: T) => any)): IThenBy<T>;
+    sortBy(selector: (item: T) => any): T[];
     toDict(keySelector: ((item: T) => string)): { [key: string]: T; };
     toDict<T2>(keySelector: ((item: T) => string), valueSelector: ((item: T) => T2)): { [key: string]: T2; };
 }
@@ -35,18 +30,27 @@ Array.prototype.remove = function<T>(item: T) {
         }
     }
 };
+
+Array.prototype.sortBy = function<T>(selector: (item: T) => any): T[] {
+    return this.sort((a,b) => selector(a) - selector(b));
+};
 // #endregion
 
 // #region String
 // tslint:disable-next-line
 interface String {
     ucFirst(): string;
+    lcFirst(): string;
     repeat(count: number): string;
     endsWith(searchString: string, position: number): boolean;
 }
 
 String.prototype.ucFirst = function() {
     return this.charAt(0).toUpperCase() + this.slice(1);
+};
+
+String.prototype.lcFirst = function() {
+    return this.charAt(0).toLowerCase() + this.slice(1);
 };
 
 if (!String.prototype.endsWith) {

@@ -27,9 +27,9 @@
             block.parentRef = parent;
             super.visitBlock(block, block);
         }
-        visitMethod(method, parent) {
+        visitMethodLike(method, parent) {
             method.classRef = parent;
-            super.visitMethod(method, method);
+            super.visitMethodLike(method, method);
         }
         visitField(field, parent) {
             field.classRef = parent;
@@ -37,7 +37,11 @@
         }
         visitProperty(prop, parent) {
             prop.classRef = parent;
-            super.visitField(prop, parent);
+            super.visitProperty(prop, parent);
+        }
+        visitInterface(intf, parent) {
+            intf.schemaRef = parent;
+            super.visitInterface(intf, intf);
         }
         visitClass(cls, parent) {
             cls.schemaRef = parent;

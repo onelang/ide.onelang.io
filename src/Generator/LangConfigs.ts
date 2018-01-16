@@ -4,14 +4,15 @@ import { deindent } from "./Utils";
 export interface LangConfig {
     name?: string;
     port: number;
+    stdlibFn: string;
     httpsEndpoint?: string;
     request: {
         lang?: string;
         code: string;
+        stdlibCode?: string;
         className?: string;
         methodName?: string;
     };
-    schemaYaml?: string;
     schema?: LangFileSchema.LangFile;
 }
 
@@ -20,6 +21,7 @@ export type LangConfigs = { [name: string]: LangConfig };
 export const langConfigs: LangConfigs = {
     cpp: {
         port: 8000,
+        stdlibFn: "one.hpp",
         request: {
             lang: "CPP",
             code: deindent(`
@@ -42,6 +44,7 @@ export const langConfigs: LangConfigs = {
     },
     csharp: {
         port: 8000,
+        stdlibFn: "one.cs",
         request: {
             lang: "CSharp",
             code: deindent(`
@@ -66,6 +69,7 @@ export const langConfigs: LangConfigs = {
     },
     go: {
         port: 8000,
+        stdlibFn: "one.go",
         request: {
             lang: "Go",
             code: deindent(`
@@ -88,6 +92,7 @@ export const langConfigs: LangConfigs = {
     },
     java: {
         port: 8001,
+        stdlibFn: "one.java",
         httpsEndpoint: "java",
         request: {
             code: deindent(`
@@ -96,12 +101,13 @@ export const langConfigs: LangConfigs = {
                         return "Hello World!";
                     }
                 }`),
-            className: 'TestClass',
-            methodName: 'testMethod'
+            className: 'Program',
+            methodName: 'main'
         }
     },
     javascript: {
         port: 8002,
+        stdlibFn: "one.js",
         httpsEndpoint: "javascript",
         request: {
             code: deindent(`
@@ -118,6 +124,7 @@ export const langConfigs: LangConfigs = {
     },
     perl: {
         port: 8000,
+        stdlibFn: "one.pl",
         request: {
             lang: "Perl",
             code: deindent(`
@@ -144,6 +151,7 @@ export const langConfigs: LangConfigs = {
     },
     php: {
         port: 8003,
+        stdlibFn: "one.php",
         httpsEndpoint: "php",
         request: {
             lang: "PHP",
@@ -161,6 +169,7 @@ export const langConfigs: LangConfigs = {
     },
     python: {
         port: 8004,
+        stdlibFn: "one.py",
         httpsEndpoint: "python",
         request: {
             lang: "Python",
@@ -174,6 +183,7 @@ export const langConfigs: LangConfigs = {
     },
     ruby: {
         port: 8005,
+        stdlibFn: "one.rb",
         httpsEndpoint: "ruby",
         request: {
             lang: "Ruby",
@@ -189,6 +199,7 @@ export const langConfigs: LangConfigs = {
     },
     swift: {
         port: 8000,
+        stdlibFn: "one.swift",
         request: {
             lang: "Swift",
             code: deindent(`
@@ -203,6 +214,7 @@ export const langConfigs: LangConfigs = {
     },
     typescript: {
         port: 8002,
+        stdlibFn: "one.ts",
         httpsEndpoint: "javascript",
         request: {
             lang: "TypeScript",

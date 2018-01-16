@@ -1,80 +1,128 @@
 export namespace OneAst {
+    export interface ILangData {
+        literalClassNames: {
+            string: string,
+            boolean: string,
+            numeric: string,
+            character: string,
+            map: string,
+            array: string,
+         };
+    
+         allowImplicitVariableDeclaration: boolean;
+    }
+
+    export interface TextRange {
+        start: number;
+        end: number;
+    }
+
+    export interface NodeData {
+        sourceRange: TextRange;
+        destRanges: { [langName: string]: TextRange };
+    }
+
+    export interface INode {
+        nodeData?: NodeData;
+    }
+
     export interface Schema {
         sourceType: "program"|"overlay"|"stdlib";
+        langData: ILangData;
         meta: { transforms?: { [name: string]: boolean } };
         globals: { [name: string]: VariableDeclaration };
         enums: { [name: string]: Enum };
         classes: { [name: string]: Class };
+        interfaces: { [name: string]: Interface };
     }
 
-    export interface NamedItem {
+    export interface NamedItem extends INode {
         name?: string;
+        outName?: string;
         metaPath?: string;
     }
 
     export interface Enum extends NamedItem {
+        name?: string;
         values: EnumMember[];
+        type?: Type;
+        leadingTrivia: string;
     }
 
-    export interface EnumMember {
+    export interface EnumMember extends NamedItem {
         name: string;
     }
 
-    export interface Class extends NamedItem {
+    export interface Interface extends NamedItem {
         schemaRef?: Schema;
         type?: Type;
-        fields: { [name: string]: Field };
-        properties: { [name: string]: Property };
-        constructor: Constructor;
         methods: { [name: string]: Method };
         typeArguments: string[];
         meta?: {
             iterable?: boolean;
+        };
+        leadingTrivia: string;
+        attributes: { [name: string]: any };        
+        baseInterfaces: string[];
+    }
+
+    export interface Class extends Interface {
+        fields: { [name: string]: Field };
+        properties: { [name: string]: Property };
+        constructor: Constructor;
+        meta?: {
+            iterable?: boolean;
             overlay?: boolean;
             stdlib?: boolean;
-        }
+        };
+        baseClass: string;
     }
 
     export enum Visibility { Public = "public", Protected = "protected", Private = "private" }
     
     export enum TypeKind { 
         Void = "void",
-        Boolean = "boolean",
-        String = "string",
-        Number = "number",
-        Null = "null",
         Any = "any",
+        Null = "null",
         Class = "class",
+        Interface = "interface",
+        Enum = "enum",
         Method = "method",
         Generics = "generics"
     }
 
-    export interface IType {
-        typeKind: TypeKind;
-        className: string;
-        typeArguments: Type[];
-        classType: Type;
-        methodName: string;
-    }
-
-    export class Type implements IType {
+    export class Type implements INode {
         $objType = "Type";
         
         constructor(public typeKind: TypeKind = null) { }
         
         public className: string;
+        public enumName: string;
         public typeArguments: Type[];
         public classType: Type;
         public methodName: string;
         public genericsName: string;
+        nodeData?: NodeData;        
 
         get isPrimitiveType() { return Type.PrimitiveTypeKinds.includes(this.typeKind); }
         get isClass() { return this.typeKind === TypeKind.Class; }
+        get isInterface() { return this.typeKind === TypeKind.Interface; }
+        get isClassOrInterface() { return this.isClass || this.isInterface; }
+        get isComplexClass() { return this.canBeNull && !this.isAny; } // TODO: hack for C++ (any) & Go (interface{})
+        get isEnum() { return this.typeKind === TypeKind.Enum; }
         get isMethod() { return this.typeKind === TypeKind.Method; }
         get isGenerics() { return this.typeKind === TypeKind.Generics; }
-        get isNumber() { return this.typeKind === TypeKind.Number; }
+        get isAny() { return this.typeKind === TypeKind.Any; }
+        get isNull() { return this.typeKind === TypeKind.Null; }
+        get isVoid() { return this.typeKind === TypeKind.Void; }
+        get isNumber() { return this.className === "OneNumber"; }
+        get isString() { return this.className === "OneString"; }
+        get isCharacter() { return this.className === "OneCharacter"; }
+        get isBoolean() { return this.className === "OneBoolean"; }
         get isOneArray() { return this.className === "OneArray"; }
         get isOneMap() { return this.className === "OneMap"; }
+
+        get canBeNull() { return (this.isClassOrInterface && !this.isNumber && !this.isCharacter && !this.isString && !this.isBoolean) || this.isAny; }
 
         equals(other: Type) {
             if (this.typeKind !== other.typeKind)
@@ -95,36 +143,56 @@ export namespace OneAst {
         repr() {
             if (this.isPrimitiveType) {
                 return this.typeKind.toString();
-            } else if (this.isClass) {
-                return this.className + (this.typeArguments.length === 0 ? "" : 
-                    `<${this.typeArguments.map(x => x.repr()).join(", ")}>`);
+            } else if (this.isClassOrInterface) {
+                return (this.isInterface ? "(I)" : "") + this.className + 
+                    (this.typeArguments.length === 0 ? "" : `<${this.typeArguments.map(x => x.repr()).join(", ")}>`);
             } else if (this.isMethod) {
                 return `${this.classType.repr()}::${this.methodName}`;
             } else if (this.isGenerics) {
                 return this.genericsName;
+            } else if (this.isEnum) {
+                return `${this.enumName} (enum)`;
             } else {
                 return "?";
             }
         }
 
-        static PrimitiveTypeKinds = [TypeKind.Void, TypeKind.Boolean, TypeKind.String, TypeKind.Number, TypeKind.Null, TypeKind.Any];
-        
-        static Void = new Type(TypeKind.Void);
-        static Boolean = new Type(TypeKind.Boolean);
-        static String = new Type(TypeKind.String);
-        static Number = new Type(TypeKind.Number);
-        static Null = new Type(TypeKind.Null);
-        static Any = new Type(TypeKind.Any);
+        static PrimitiveTypeKinds = [TypeKind.Void, TypeKind.Any, TypeKind.Null];
+
+        // TODO / note: new instance is required because of NodeData... maybe rethink this approach?
+        static get Void() { return new Type(TypeKind.Void); }
+        static get Any() { return new Type(TypeKind.Any); }
+        static get Null() { return new Type(TypeKind.Null); }
         
         static Class(className: string, generics: Type[] = []) {
+            if (!className)
+                throw new Error("expected className in Type.Class");
+
             const result = new Type(TypeKind.Class);
             result.className = className;
             result.typeArguments = generics;
             return result;
         }
 
+        static Interface(className: string, generics: Type[] = []) {
+            if (!className)
+                throw new Error("expected className in Type.Interface");
+
+            const result = new Type(TypeKind.Interface);
+            result.className = className;
+            result.typeArguments = generics;
+            return result;
+        }
+
+        static Enum(enumName: string) {
+            const result = new Type(TypeKind.Enum);
+            result.enumName = enumName;
+            return result;
+        }
+
         static Method(classType: Type, methodName: string) {
             const result = new Type(TypeKind.Method);
+            if (!classType) throw new Error(`Missing classType for method: ${methodName}`);
             result.classType = classType;
             result.methodName = methodName;
             return result;
@@ -136,7 +204,9 @@ export namespace OneAst {
             return result;
         }
 
-        static Load(source: IType) {
+        static Load(source: Type) {
+            if (!source || source.$objType !== "Type")
+                throw new Error("Invalid source to load Type from!");
             return Object.assign(new Type(), source);
         }
     }
@@ -147,24 +217,29 @@ export namespace OneAst {
         isMutable?: boolean;
     }
 
-    export interface Field extends VariableBase {
+    export interface Field extends VariableDeclaration {
         classRef?: Class;
         visibility: Visibility;
-        defaultValue?: any;
+        static: boolean;
     }
 
     export interface Property extends VariableBase {
         classRef?: Class;
         visibility: Visibility;
+        static: boolean;
         getter: Block;
         setter: Block;
     }
 
     export interface MethodParameter extends VariableDeclaration { }
 
-    export interface Constructor {
+    export interface Constructor extends NamedItem {
+        classRef?: Class;
         parameters: MethodParameter[];
         body: Block;
+        throws: boolean;
+        leadingTrivia: string;
+        attributes: { [name: string]: any };
     }
 
     export interface Method extends NamedItem {
@@ -175,7 +250,11 @@ export namespace OneAst {
         parameters: MethodParameter[];
         returns: Type;
         body: Block;
+        throws: boolean;
+        mutates: boolean;
         visibility?: Visibility;
+        leadingTrivia: string;
+        attributes: { [name: string]: any };
     }
 
     export type MethodLike = Method | Constructor;
@@ -191,17 +270,21 @@ export namespace OneAst {
         New = "New",
         Conditional = "Conditional",
         Literal = "Literal",
+        TemplateString = "TemplateString",
         Parenthesized = "Parenthesized",
         Unary = "Unary",
+        Cast = "Cast",
         ArrayLiteral = "ArrayLiteral",
         MapLiteral = "MapLiteral",
         VariableReference = "VariableReference",
         MethodReference = "MethodReference",
         ThisReference = "ThisReference",
         ClassReference = "ClassReference",
+        EnumReference = "EnumReference",
+        EnumMemberReference = "EnumMemberReference",
     }
 
-    export interface Expression {
+    export interface Expression extends INode {
         exprKind: ExpressionKind;
         parentRef?: Expression|Statement;
         valueType?: Type;
@@ -219,6 +302,7 @@ export namespace OneAst {
     }
 
     export enum VariableRefType { 
+        StaticField = "StaticField",
         InstanceField = "InstanceField",
         MethodArgument = "MethodArgument",
         LocalVar = "LocalVar",
@@ -230,6 +314,10 @@ export namespace OneAst {
 
         static InstanceField(thisExpr: Expression, varRef: VariableBase) {
             return new VariableRef(VariableRefType.InstanceField, varRef, thisExpr);
+        }
+
+        static StaticField(thisExpr: Expression, varRef: VariableBase) {
+            return new VariableRef(VariableRefType.StaticField, varRef, thisExpr);
         }
 
         static MethodVariable(varRef: VariableBase) {
@@ -259,6 +347,18 @@ export namespace OneAst {
         constructor(public classRef: Class) { super(); }
     }
 
+    export class EnumReference extends Reference {
+        exprKind = ExpressionKind.EnumReference;
+        
+        constructor(public enumRef: Enum) { super(); }
+    }
+
+    export class EnumMemberReference extends Reference {
+        exprKind = ExpressionKind.EnumMemberReference;
+        
+        constructor(public enumMemberRef: EnumMember, public enumRef: Enum) { super(); }
+    }
+
     export class ThisReference extends Reference {
         exprKind = ExpressionKind.ThisReference;
     }
@@ -273,13 +373,24 @@ export namespace OneAst {
     }
 
     export interface Literal extends Expression {
-        literalType: "numeric"|"string"|"boolean"|"null";
+        literalType: "numeric"|"string"|"character"|"boolean"|"null";
         value: any;
+        escapedText: string;
+        escapedTextSingle: string;
+    }
+
+    export interface TemplateStringPart {
+        literal: boolean;
+        text?: string;
+        expr?: Expression;
+    }
+
+    export interface TemplateString extends Expression {
+        parts: TemplateStringPart[];
     }
 
     export interface ArrayLiteral extends Expression {
         items: Expression[];
-        arrayType?: string;
     }
 
     export interface MapLiteral extends Expression {
@@ -288,8 +399,8 @@ export namespace OneAst {
 
     export interface NewExpression extends Expression {
         cls: Identifier|ClassReference;
-        typeArguments: string[];
-        arguments: Expression[];
+        typeArguments: Type[];
+        arguments: CallArgument[];
     }
 
     export interface BinaryExpression extends Expression {
@@ -300,8 +411,13 @@ export namespace OneAst {
 
     export interface UnaryExpression extends Expression {
         unaryType: "postfix"|"prefix";
-        operator: "++" | "--" | "+" | "-" | "~" | "!";
+        operator: string; //"++" | "--" | "+" | "-" | "~" | "!";
         operand: Expression;
+    }
+
+    export interface CastExpression extends Expression {
+        expression: Expression;
+        newType: Type;
     }
 
     export interface ParenthesizedExpression extends Expression {
@@ -335,9 +451,11 @@ export namespace OneAst {
         Throw = "Throw",
         Foreach = "Foreach",
         For = "For",
+        Break = "Break",
+        Unset = "Unset",
     }
 
-    export interface Statement {
+    export interface Statement extends INode {
         leadingTrivia?: string;
         leadingTrivia2?: string;
         parentRef?: Block;
@@ -362,6 +480,10 @@ export namespace OneAst {
         expression: Expression;
     }
 
+    export interface UnsetStatement extends Statement {
+        expression: Expression;
+    }
+
     export interface VariableDeclaration extends Statement, VariableBase {
         initializer?: Expression;
     }
@@ -372,7 +494,7 @@ export namespace OneAst {
     }
 
     export interface ForeachStatement extends Statement, NamedItem {
-        itemVariable: VariableDeclaration;
+        itemVariable: VariableBase;
         items: Expression;
         body: Block;
     }

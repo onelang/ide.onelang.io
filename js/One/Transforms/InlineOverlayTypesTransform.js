@@ -98,7 +98,7 @@
             if (expr.varType !== Ast_1.OneAst.VariableRefType.InstanceField)
                 return;
             const prop = expr.varRef;
-            if (!(prop.classRef.meta && prop.classRef.meta.overlay))
+            if (!(prop.classRef && prop.classRef.meta && prop.classRef.meta.overlay))
                 return;
             const stmts = prop.getter.statements;
             if (!(stmts.length === 1 && stmts[0].stmtType === Ast_1.OneAst.StatementType.Return)) {
@@ -139,12 +139,30 @@
             super();
             this.schemaCtx = schemaCtx;
         }
-        visitVariable(stmt) {
-            const clsName = stmt.type.className;
-            const cls = clsName && this.schemaCtx.getClass(clsName);
-            if (!(cls && cls.meta && cls.meta.overlay))
+        convertType(type) {
+            if (!type)
                 return;
-            stmt.type.className = cls.fields["_one"].type.className;
+            const cls = type.className && this.schemaCtx.getClass(type.className);
+            if (cls && cls.meta && cls.meta.overlay)
+                type.className = cls.fields["_one"].type.className;
+            for (const typeArg of type.typeArguments || [])
+                this.convertType(typeArg);
+        }
+        visitCastExpression(expr) {
+            super.visitCastExpression(expr, null);
+            this.convertType(expr.newType);
+        }
+        visitExpression(expr) {
+            super.visitExpression(expr, null);
+            this.convertType(expr.valueType);
+        }
+        visitVariable(stmt) {
+            super.visitVariable(stmt, null);
+            this.convertType(stmt.type);
+        }
+        visitMethod(method) {
+            super.visitMethod(method, null);
+            this.convertType(method.returns);
         }
         process() {
             this.visitSchema(this.schemaCtx.schema, null);
@@ -153,7 +171,7 @@
     class InlineOverlayTypesTransform {
         constructor() {
             this.name = "inlineOverlayTypes";
-            this.dependencies = ["inferTypes"];
+            this.dependencies = [];
         }
         transform(schemaCtx) {
             new ReplaceReferences(schemaCtx).process();

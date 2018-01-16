@@ -12,11 +12,14 @@
     const Ast_1 = require("./Ast");
     class AstHelper {
         static replaceProperties(dest, src) {
+            const keep = ["nodeData"];
             dest.__proto__ = src.__proto__;
             for (var i in dest)
-                delete dest[i];
+                if (!keep.includes(i))
+                    delete dest[i];
             for (var i of Object.keys(src))
-                dest[i] = src[i];
+                if (!keep.includes(i))
+                    dest[i] = src[i];
             return dest;
         }
         static methodRepr(method) {
@@ -49,6 +52,17 @@
                 return v;
             });
             return clone;
+        }
+        static getMethodFromRef(lang, methodRef) {
+            if (methodRef.methodRef.body)
+                return methodRef.methodRef;
+            const metaPath = methodRef.methodRef.metaPath;
+            if (!metaPath)
+                return null;
+            const methodPathParts = metaPath.split("/");
+            const cls = lang.classes[methodPathParts[0]];
+            const method = cls && cls.methods && cls.methods[methodPathParts[1]];
+            return method;
         }
     }
     exports.AstHelper = AstHelper;

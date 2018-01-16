@@ -56,3 +56,42 @@ class TsMap<K,V> {
     }
 }
 
+class TsString {
+    _one: OneString;
+    
+    get length(): OneNumber {
+        return this._one.length;
+    }
+
+    get(idx: number): OneCharacter {
+        return this._one.get(idx);
+    }
+    
+    substring(start: number, end: number): OneString {
+        return this._one.substring(start, end);
+    }
+
+    substr(start: number, length: number): OneString {
+        return this._one.substring(start, start + length);
+    }
+
+    split(separator: string): OneArray<OneString> {
+        return this._one.split(separator);
+    }
+
+    startsWith(str: string, position: number = 0): OneBoolean {
+        return this._one.substrMatch(str, position);
+    }
+}
+
+class TsNumber {
+    _one: OneNumber;
+}
+
+class TsCharacter {
+    _one: OneCharacter;
+}
+
+class TsBoolean {
+    _one: OneBoolean;
+}

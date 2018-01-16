@@ -104,7 +104,7 @@ class ReplaceReferences extends AstVisitor<void> {
         if (expr.varType !== one.VariableRefType.InstanceField) return;
 
         const prop = <one.Property> expr.varRef;
-        if (!(prop.classRef.meta && prop.classRef.meta.overlay)) return;
+        if (!(prop.classRef && prop.classRef.meta && prop.classRef.meta.overlay)) return;
 
         const stmts = prop.getter.statements;
         if (!(stmts.length === 1 && stmts[0].stmtType === one.StatementType.Return)) {
@@ -150,12 +150,35 @@ class ReplaceReferences extends AstVisitor<void> {
 class ReplaceVariables extends AstVisitor<void> {
     constructor(public schemaCtx: SchemaContext) { super(); }
 
-    protected visitVariable(stmt: one.VariableBase) {
-        const clsName = stmt.type.className;
-        const cls = clsName && this.schemaCtx.getClass(clsName);
-        if (!(cls && cls.meta && cls.meta.overlay)) return;
+    protected convertType(type: one.Type) {
+        if (!type) return;
 
-        stmt.type.className = cls.fields["_one"].type.className;
+        const cls = type.className && this.schemaCtx.getClass(type.className);
+        if (cls && cls.meta && cls.meta.overlay)
+            type.className = cls.fields["_one"].type.className;
+
+        for (const typeArg of type.typeArguments||[])
+            this.convertType(typeArg);
+    }
+
+    protected visitCastExpression(expr: one.CastExpression) { 
+        super.visitCastExpression(expr, null);
+        this.convertType(expr.newType);
+    }
+
+    protected visitExpression(expr: one.Expression) {
+        super.visitExpression(expr, null);
+        this.convertType(expr.valueType);
+    }
+
+    protected visitVariable(stmt: one.VariableBase) {
+        super.visitVariable(stmt, null);
+        this.convertType(stmt.type);
+    }
+
+    protected visitMethod(method: one.Method) {
+        super.visitMethod(method, null);
+        this.convertType(method.returns);
     }
 
     process() {
@@ -165,7 +188,7 @@ class ReplaceVariables extends AstVisitor<void> {
 
 export class InlineOverlayTypesTransform implements ISchemaTransform {
     name = "inlineOverlayTypes";
-    dependencies = ["inferTypes"];
+    dependencies = [];
 
     transform(schemaCtx: SchemaContext) {
         new ReplaceReferences(schemaCtx).process();

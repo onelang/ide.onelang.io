@@ -4,22 +4,19 @@
         if (v !== undefined) module.exports = v;
     }
     else if (typeof define === "function" && define.amd) {
-        define(["require", "exports", "../Ast", "../AstVisitor", "../VariableContext", "./InferTypesTransform", "../AstHelper"], factory);
+        define(["require", "exports", "../Ast", "../VariableContext", "../AstHelper", "../AstTransformer"], factory);
     }
 })(function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     const Ast_1 = require("../Ast");
-    const AstVisitor_1 = require("../AstVisitor");
     const VariableContext_1 = require("../VariableContext");
-    const InferTypesTransform_1 = require("./InferTypesTransform");
     const AstHelper_1 = require("../AstHelper");
+    const AstTransformer_1 = require("../AstTransformer");
     class Context {
         constructor(parent = null) {
             this.variables = null;
-            this.classes = null;
             this.variables = parent === null ? new VariableContext_1.VariableContext() : parent.variables.inherit();
-            this.classes = parent === null ? new InferTypesTransform_1.ClassRepository() : parent.classes;
         }
         addLocalVar(variable) {
             this.variables.add(variable.name, Ast_1.OneAst.VariableRef.MethodVariable(variable));
@@ -29,25 +26,26 @@
         }
     }
     exports.Context = Context;
-    class ResolveIdentifiersTransform extends AstVisitor_1.AstVisitor {
-        constructor() {
-            super(...arguments);
-            this.name = "resolveIdentifiers";
-            this.dependencies = ["fillName"];
+    class ResolveIdentifiersTransform extends AstTransformer_1.AstTransformer {
+        constructor(schemaCtx) {
+            super();
+            this.schemaCtx = schemaCtx;
         }
         visitIdentifier(id, context) {
             const variable = context.variables.get(id.text);
+            const cls = this.schemaCtx.getClass(id.text);
+            const enum_ = this.schemaCtx.schema.enums[id.text];
             if (variable) {
                 AstHelper_1.AstHelper.replaceProperties(id, variable);
             }
+            else if (cls) {
+                AstHelper_1.AstHelper.replaceProperties(id, new Ast_1.OneAst.ClassReference(cls));
+            }
+            else if (enum_) {
+                AstHelper_1.AstHelper.replaceProperties(id, new Ast_1.OneAst.EnumReference(enum_));
+            }
             else {
-                const cls = context.classes.getClass(id.text);
-                if (cls) {
-                    AstHelper_1.AstHelper.replaceProperties(id, new Ast_1.OneAst.ClassReference(cls));
-                }
-                else {
-                    this.log(`Could not find identifier: ${id.text}`);
-                }
+                this.log(`Could not find identifier: ${id.text}`);
             }
         }
         visitVariable(stmt, context) {
@@ -68,25 +66,44 @@
             newContext.addLocalVar(stmt.itemVariable);
             this.visitBlock(stmt.body, newContext);
         }
-        transform(schemaCtx) {
+        tryToConvertImplicitVarDecl(stmt, context) {
+            if (stmt.expression.exprKind !== Ast_1.OneAst.ExpressionKind.Binary)
+                return false;
+            const expr = stmt.expression;
+            if (expr.operator !== "=" || expr.left.exprKind !== Ast_1.OneAst.ExpressionKind.Identifier)
+                return false;
+            const name = expr.left.text;
+            if (context.variables.get(name) !== null)
+                return false;
+            const varDecl = AstHelper_1.AstHelper.replaceProperties(stmt, {
+                stmtType: Ast_1.OneAst.StatementType.VariableDeclaration,
+                name,
+                initializer: expr.right,
+            });
+            this.visitVariableDeclaration(varDecl, context);
+            return true;
+        }
+        visitExpressionStatement(stmt, context) {
+            if (this.schemaCtx.schema.langData.allowImplicitVariableDeclaration && this.tryToConvertImplicitVarDecl(stmt, context))
+                return;
+            this.visitExpression(stmt.expression, context);
+        }
+        visitMethodLike(method, classContext) {
+            const methodContext = classContext.inherit();
+            for (const param of method.parameters)
+                methodContext.variables.add(param.name, Ast_1.OneAst.VariableRef.MethodArgument(param));
+            if (method.body)
+                this.visitBlock(method.body, methodContext);
+        }
+        visitClass(cls, globalContext) {
+            const classContext = globalContext.inherit();
+            classContext.variables.add("this", new Ast_1.OneAst.ThisReference());
+            super.visitClass(cls, classContext);
+        }
+        static transform(schemaCtx) {
             const globalContext = schemaCtx.tiContext.inherit();
-            const classes = Object.values(schemaCtx.schema.classes);
-            for (const cls of classes)
-                globalContext.classes.addClass(cls);
-            for (const cls of classes) {
-                const classContext = globalContext.inherit();
-                classContext.variables.add("this", new Ast_1.OneAst.ThisReference());
-                for (const prop of Object.values(cls.properties)) {
-                    this.visitBlock(prop.getter, classContext);
-                }
-                for (const method of Object.values(cls.methods)) {
-                    const methodContext = classContext.inherit();
-                    for (const param of method.parameters)
-                        methodContext.variables.add(param.name, Ast_1.OneAst.VariableRef.MethodArgument(param));
-                    if (method.body)
-                        this.visitBlock(method.body, methodContext);
-                }
-            }
+            const trans = new ResolveIdentifiersTransform(schemaCtx);
+            trans.visitSchema(schemaCtx.schema, globalContext);
         }
     }
     exports.ResolveIdentifiersTransform = ResolveIdentifiersTransform;

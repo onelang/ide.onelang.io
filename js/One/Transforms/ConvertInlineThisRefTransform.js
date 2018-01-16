@@ -19,7 +19,7 @@
         constructor() {
             super(...arguments);
             this.name = "convertInlineThisRef";
-            this.dependencies = ["inferTypes"];
+            this.dependencies = [];
         }
         visitVariableRef(expr) {
             if (expr.varType === Ast_1.OneAst.VariableRefType.InstanceField && expr.varRef.name === "_one") {

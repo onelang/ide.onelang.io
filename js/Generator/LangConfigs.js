@@ -13,6 +13,7 @@
     exports.langConfigs = {
         cpp: {
             port: 8000,
+            stdlibFn: "one.hpp",
             request: {
                 lang: "CPP",
                 code: Utils_1.deindent(`
@@ -35,6 +36,7 @@
         },
         csharp: {
             port: 8000,
+            stdlibFn: "one.cs",
             request: {
                 lang: "CSharp",
                 code: Utils_1.deindent(`
@@ -59,6 +61,7 @@
         },
         go: {
             port: 8000,
+            stdlibFn: "one.go",
             request: {
                 lang: "Go",
                 code: Utils_1.deindent(`
@@ -81,6 +84,7 @@
         },
         java: {
             port: 8001,
+            stdlibFn: "one.java",
             httpsEndpoint: "java",
             request: {
                 code: Utils_1.deindent(`
@@ -89,12 +93,13 @@
                         return "Hello World!";
                     }
                 }`),
-                className: 'TestClass',
-                methodName: 'testMethod'
+                className: 'Program',
+                methodName: 'main'
             }
         },
         javascript: {
             port: 8002,
+            stdlibFn: "one.js",
             httpsEndpoint: "javascript",
             request: {
                 code: Utils_1.deindent(`
@@ -111,6 +116,7 @@
         },
         perl: {
             port: 8000,
+            stdlibFn: "one.pl",
             request: {
                 lang: "Perl",
                 code: Utils_1.deindent(`
@@ -137,6 +143,7 @@
         },
         php: {
             port: 8003,
+            stdlibFn: "one.php",
             httpsEndpoint: "php",
             request: {
                 lang: "PHP",
@@ -154,6 +161,7 @@
         },
         python: {
             port: 8004,
+            stdlibFn: "one.py",
             httpsEndpoint: "python",
             request: {
                 lang: "Python",
@@ -167,6 +175,7 @@
         },
         ruby: {
             port: 8005,
+            stdlibFn: "one.rb",
             httpsEndpoint: "ruby",
             request: {
                 lang: "Ruby",
@@ -182,6 +191,7 @@
         },
         swift: {
             port: 8000,
+            stdlibFn: "one.swift",
             request: {
                 lang: "Swift",
                 code: Utils_1.deindent(`
@@ -196,6 +206,7 @@
         },
         typescript: {
             port: 8002,
+            stdlibFn: "one.ts",
             httpsEndpoint: "javascript",
             request: {
                 lang: "TypeScript",

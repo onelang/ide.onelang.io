@@ -15,9 +15,23 @@
             const thisClassName = this.constructor.name;
             console.log(`[${thisClassName}]`, data);
         }
+        visitNode(node, context) {
+        }
+        visitNamedItem(namedItem, context) {
+            this.visitNode(namedItem, context);
+        }
+        visitType(type, context) {
+            if (!type)
+                return;
+            this.visitNode(type, context);
+            if (type.isClassOrInterface)
+                for (const typeArg of type.typeArguments)
+                    this.visitType(typeArg, context);
+        }
         visitIdentifier(id, context) { }
         visitReturnStatement(stmt, context) {
-            this.visitExpression(stmt.expression, context);
+            if (stmt.expression)
+                this.visitExpression(stmt.expression, context);
         }
         visitExpressionStatement(stmt, context) {
             this.visitExpression(stmt.expression, context);
@@ -32,6 +46,8 @@
             this.visitExpression(stmt.expression, context);
         }
         visitVariable(stmt, context) {
+            this.visitNamedItem(stmt, context);
+            this.visitType(stmt.type, context);
         }
         visitVariableDeclaration(stmt, context) {
             this.visitVariable(stmt, context);
@@ -50,14 +66,19 @@
             this.visitBlock(stmt.body, context);
         }
         visitForeachStatement(stmt, context) {
-            this.visitVariableDeclaration(stmt.itemVariable, context);
+            this.visitVariable(stmt.itemVariable, context);
             this.visitExpression(stmt.items, context);
             this.visitBlock(stmt.body, context);
+        }
+        visitBreakStatement(stmt, context) { }
+        visitUnsetStatement(stmt, context) {
+            this.visitExpression(stmt.expression, context);
         }
         visitUnknownStatement(stmt, context) {
             this.log(`Unknown statement type: ${stmt.stmtType}`);
         }
         visitStatement(statement, context) {
+            this.visitNode(statement, context);
             if (statement.stmtType === Ast_1.OneAst.StatementType.Return) {
                 return this.visitReturnStatement(statement, context);
             }
@@ -82,11 +103,18 @@
             else if (statement.stmtType === Ast_1.OneAst.StatementType.Foreach) {
                 return this.visitForeachStatement(statement, context);
             }
+            else if (statement.stmtType === Ast_1.OneAst.StatementType.Break) {
+                return this.visitBreakStatement(statement, context);
+            }
+            else if (statement.stmtType === Ast_1.OneAst.StatementType.Unset) {
+                return this.visitUnsetStatement(statement, context);
+            }
             else {
                 return this.visitUnknownStatement(statement, context);
             }
         }
         visitBlock(block, context) {
+            this.visitNamedItem(block, context);
             for (const statement of block.statements) {
                 this.visitStatement(statement, context);
             }
@@ -111,6 +139,10 @@
                 this.visitExpression(arg, context);
         }
         visitLiteral(expr, context) { }
+        visitTemplateString(expr, context) {
+            for (const part of expr.parts.filter(x => x.expr))
+                this.visitExpression(part.expr, context);
+        }
         visitParenthesizedExpression(expr, context) {
             this.visitExpression(expr.expression, context);
         }
@@ -145,7 +177,13 @@
         }
         visitClassReference(expr, context) { }
         visitThisReference(expr, context) { }
+        visitEnumReference(expr, context) { }
+        visitEnumMemberReference(expr, context) { }
+        visitCastExpression(expr, context) {
+            this.visitExpression(expr.expression, context);
+        }
         visitExpression(expression, context) {
+            this.visitNode(expression, context);
             if (expression.exprKind === Ast_1.OneAst.ExpressionKind.Binary) {
                 return this.visitBinaryExpression(expression, context);
             }
@@ -163,6 +201,9 @@
             }
             else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.Literal) {
                 return this.visitLiteral(expression, context);
+            }
+            else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.TemplateString) {
+                return this.visitTemplateString(expression, context);
             }
             else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.Parenthesized) {
                 return this.visitParenthesizedExpression(expression, context);
@@ -194,24 +235,49 @@
             else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.ThisReference) {
                 return this.visitThisReference(expression, context);
             }
+            else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.EnumReference) {
+                return this.visitEnumReference(expression, context);
+            }
+            else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.EnumMemberReference) {
+                return this.visitEnumMemberReference(expression, context);
+            }
+            else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.Cast) {
+                return this.visitCastExpression(expression, context);
+            }
             else {
                 return this.visitUnknownExpression(expression, context);
             }
         }
-        visitMethod(method, context) {
+        visitMethodLike(method, context) {
+            this.visitNamedItem(method, context);
             if (method.body)
                 this.visitBlock(method.body, context);
             for (const param of method.parameters)
                 this.visitVariableDeclaration(param, context);
         }
+        visitMethod(method, context) {
+            this.visitMethodLike(method, context);
+            this.visitType(method.returns, context);
+        }
+        visitConstructor(constructor, context) {
+            this.visitMethodLike(constructor, context);
+        }
         visitField(field, context) {
-            this.visitVariable(field, context);
+            this.visitVariableDeclaration(field, context);
         }
         visitProperty(prop, context) {
             this.visitBlock(prop.getter, context);
             this.visitVariable(prop, context);
         }
+        visitInterface(intf, context) {
+            this.visitNamedItem(intf, context);
+            for (const method of Object.values(intf.methods))
+                this.visitMethod(method, context);
+        }
         visitClass(cls, context) {
+            this.visitNamedItem(cls, context);
+            if (cls.constructor)
+                this.visitConstructor(cls.constructor, context);
             for (const method of Object.values(cls.methods))
                 this.visitMethod(method, context);
             for (const prop of Object.values(cls.properties))
@@ -219,10 +285,21 @@
             for (const field of Object.values(cls.fields))
                 this.visitField(field, context);
         }
+        visitEnum(enum_, context) {
+            this.visitNamedItem(enum_, context);
+            for (var item of enum_.values)
+                this.visitEnumMember(item, context);
+        }
+        visitEnumMember(enumMember, context) {
+            this.visitNamedItem(enumMember, context);
+        }
         visitSchema(schema, context) {
-            for (const cls of Object.values(schema.classes)) {
+            for (const enum_ of Object.values(schema.enums))
+                this.visitEnum(enum_, context);
+            for (const intf of Object.values(schema.interfaces))
+                this.visitInterface(intf, context);
+            for (const cls of Object.values(schema.classes))
                 this.visitClass(cls, context);
-            }
         }
     }
     exports.AstVisitor = AstVisitor;

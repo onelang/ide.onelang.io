@@ -17,6 +17,8 @@
             return -1; // whitespace line => pad === 0
         }
         const lines = str.split("\n");
+        if (lines.length === 1)
+            return str;
         if (getPadLen(lines[0]) === -1)
             lines.shift();
         const minPadLen = Math.min.apply(null, lines.map(getPadLen).filter(x => x !== -1));

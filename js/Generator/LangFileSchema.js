@@ -16,6 +16,7 @@
             Casing["PascalCase"] = "pascal_case";
             Casing["CamelCase"] = "camel_case";
             Casing["SnakeCase"] = "snake_case";
+            Casing["UpperCase"] = "upper_case";
         })(Casing = LangFileSchema.Casing || (LangFileSchema.Casing = {}));
     })(LangFileSchema = exports.LangFileSchema || (exports.LangFileSchema = {}));
 });

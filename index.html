@@ -15,22 +15,20 @@
         span.label.error { background: #f00; }
         span.label.waiting { background: #aaa; }
         span.result { position: relative; top: 1px; }
+        .ace-monokai .ace_marker-layer .ace_step_multiline { background: rgba(102, 82, 0, 0.2); position: absolute; z-index: 3; }
     </style>
     <script>
+        window.global = window;
         requirejs.config({
             "baseUrl": "js/",
             "paths": {
                 "jquery": "//code.jquery.com/jquery-3.2.1.min",
                 "goldenlayout": "//cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/goldenlayout.min",
-                "ace/ace": "//cdnjs.cloudflare.com/ajax/libs/ace/1.2.8/ace",
-                "typescript": "/lib/typescript",
-                "ts-simple-ast": "/lib/TsSimpleAst",
+                "ace/ace": "//cdnjs.cloudflare.com/ajax/libs/ace/1.2.8/ace"
             }
         });
 
-        require(["typescript"], ts => {
-            require(["Browser"]);
-        });
+        require(["Browser"]);
     </script>
 </head>
 <body>

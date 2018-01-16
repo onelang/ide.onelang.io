@@ -18,10 +18,12 @@
             this.pad = "";
             this.padWasAdded = false;
             this.showRefs = false;
+            this.lastLineWasNewLine = true;
         }
         addLine(line) {
             this.add(`${line}\n`);
             this.padWasAdded = false;
+            this.lastLineWasNewLine = false;
         }
         add(data) {
             if (!this.padWasAdded) {
@@ -36,8 +38,13 @@
             else
                 this.pad = this.pad.substr(0, this.pad.length - 2);
         }
+        newLine() {
+            if (!this.lastLineWasNewLine)
+                this.result += "\n";
+            this.lastLineWasNewLine = true;
+        }
         visitVariable(stmt) {
-            this.addLine(`- Variable: ${stmt.name}`);
+            this.addLine(`- Variable: ${stmt.name}${stmt.type ? ` [${stmt.type.repr()}]` : ""}`);
         }
         visitStatement(statement) {
             const addHdr = (line) => {
@@ -57,14 +64,15 @@
                 this.indent(1);
                 this.addLine(`Then`);
                 this.visitBlock(stmt.then);
-                this.addLine(`Else`);
-                if (stmt.else)
+                if (stmt.else) {
+                    this.addLine(`Else`);
                     this.visitBlock(stmt.else);
+                }
                 this.indent(-1);
             }
             else if (statement.stmtType === Ast_1.OneAst.StatementType.VariableDeclaration) {
                 const stmt = statement;
-                addHdr(`Variable: ${stmt.name}`);
+                addHdr(`Variable: ${stmt.name}${stmt.type ? ` [${stmt.type.repr()}]` : ""}`);
                 this.visitExpression(stmt.initializer);
             }
             else if (statement.stmtType === Ast_1.OneAst.StatementType.While) {
@@ -90,6 +98,8 @@
                 const stmt = statement;
                 addHdr(`For ("${stmt.itemVariable.name}")`);
                 this.indent(1);
+                this.addLine(`Var`);
+                this.visitVariableDeclaration(stmt.itemVariable, null);
                 this.addLine(`Condition`);
                 this.visitExpression(stmt.condition);
                 this.addLine(`Incrementor`);
@@ -101,6 +111,14 @@
             else if (statement.stmtType === Ast_1.OneAst.StatementType.ExpressionStatement) {
                 addHdr(`ExpressionStatement`);
                 super.visitStatement(statement, null);
+            }
+            else if (statement.stmtType === Ast_1.OneAst.StatementType.Break) {
+                addHdr(`Break`);
+            }
+            else if (statement.stmtType === Ast_1.OneAst.StatementType.Unset) {
+                const unsetStmt = statement;
+                addHdr(`Unset`);
+                super.visitExpression(unsetStmt.expression, null);
             }
             else {
                 addHdr(`${statement.stmtType}`);
@@ -141,8 +159,7 @@
             }
             else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.Literal) {
                 const expr = expression;
-                const value = expr.literalType === "string" ? `"${expr.value}"` : expr.value;
-                addHdr(`Literal (${expr.literalType}): ${value}`);
+                addHdr(`Literal (${expr.literalType}): ${JSON.stringify(expr.value)}`);
             }
             else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.Unary) {
                 const expr = expression;
@@ -171,7 +188,9 @@
                 const expr = expression;
                 const specType = !expr.thisExpr ? "static" :
                     expr.thisExpr.exprKind === Ast_1.OneAst.ExpressionKind.ThisReference ? "this" : null;
-                addHdr(`MethodReference${specType ? ` (${specType})` : ""}`);
+                const throws = expr.methodRef && expr.methodRef.throws;
+                const addInfo = [specType, throws ? "throws" : null].filter(x => x);
+                addHdr(`MethodReference${addInfo.length > 0 ? ` (${addInfo.join(", ")})` : ""}`);
                 if (!specType)
                     this.visitExpression(expr.thisExpr);
             }
@@ -182,8 +201,13 @@
             else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.New) {
                 const expr = expression;
                 const className = expr.cls.text || expr.cls.classRef.name;
-                const typeArgsText = expr.typeArguments ? `<${expr.typeArguments.join(", ")}>` : "";
+                const typeArgsText = expr.typeArguments && expr.typeArguments.length > 0 ? `<${expr.typeArguments.join(", ")}>` : "";
                 addHdr(`New ${className}${typeArgsText}`);
+            }
+            else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.Cast) {
+                const expr = expression;
+                addHdr(`Cast -> ${expr.newType.repr()}`);
+                super.visitExpression(expr.expression, null);
             }
             else if (expression.exprKind === Ast_1.OneAst.ExpressionKind.MapLiteral) {
                 const expr = expression;
@@ -204,21 +228,39 @@
             schemaCtx.ensureTransforms("fillName");
             for (const glob of Object.values(schemaCtx.schema.globals))
                 this.addLine(`global ${glob.name}: ${glob.type.repr()}`);
+            this.newLine();
+            for (const _enum of Object.values(schemaCtx.schema.enums))
+                this.addLine(`enum ${_enum.name}: ${_enum.values.map(x => x.name).join(', ')}`);
+            this.newLine();
             for (const cls of Object.values(schemaCtx.schema.classes)) {
-                for (const field of Object.values(cls.fields))
-                    this.addLine(`${cls.name}::${field.name}: ${field.type.repr()}`);
+                for (const field of Object.values(cls.fields)) {
+                    this.addLine(`${cls.name}::${field.name}: ${field.type && field.type.repr() || "null"}`);
+                    if (field.initializer) {
+                        this.visitVariableDeclaration(field, null);
+                        this.newLine();
+                    }
+                }
+                this.newLine();
                 for (const prop of Object.values(cls.properties)) {
-                    this.addLine(`${cls.name}::${prop.name}: ${prop.type.repr()}`);
+                    this.addLine(`${cls.name}::${prop.name}: ${prop.type && prop.type.repr() || "null"}`);
                     this.visitBlock(prop.getter);
                 }
+                this.newLine();
+                if (cls.constructor) {
+                    this.addLine(`${cls.name}::constructor`);
+                    this.visitBlock(cls.constructor.body);
+                }
+                this.newLine();
                 for (const method of Object.values(cls.methods)) {
-                    const argList = method.parameters.map(arg => `${arg.name}: ${arg.type.repr()}`).join(", ");
-                    this.addLine(`${cls.name}::${method.name}(${argList}): ${method.returns.repr()}${method.static ? " [static]" : ""}`);
+                    const argList = method.parameters.map(arg => `${arg.name}: ${arg.type ? arg.type.repr() : "???"}`).join(", ");
+                    const addInfo = [method.static ? "static" : null, method.throws ? "throws" : null].filter(x => x);
+                    this.addLine(`${cls.name}::${method.name}(${argList}): ${method.returns ? method.returns.repr() : "???"}`
+                        + `${addInfo.length > 0 ? ` [${addInfo.join(", ")}]` : ""}`);
                     if (method.body)
                         this.visitBlock(method.body);
                     else
                         this.addLine("  <no body>");
-                    this.addLine("");
+                    this.newLine();
                 }
             }
             return this.result;

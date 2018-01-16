@@ -1,34 +1,86 @@
-functions:
-  OneConsole.print:
-    template: 'print({{str}} . "\\n")'
-  OneArray.add:
-    template: "{{self}}[] = {{item}}"
-  OneArray.length:
-    template: "count({{self}})"
-  OneArray.get:
-    template: "{{self}}[{{index}}]"
-  OneArray.set:
-    template: "{{self}}[{{index}}] = {{value}}"
-  OneMap.keys:
-    template: "array_keys({{self}})"
-  OneMap.values:
-    template: "array_values({{self}})"
-  OneMap.remove:
-    template: "unset({{self}}[{{key}}])"
-  OneMap.hasKey:
-    template: "array_key_exists({{key}}, {{self}})"
-  OneMap.get:
-    template: "{{self}}[{{key}}]"
-  OneMap.set:
-    template: "{{self}}[{{key}}] = {{value}}"
 extension: php
-casing:
+casing: # based on https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-1-basic-coding-standard.md
   class: pascal_case
   method: camel_case
+  field: snake_case
+  property: snake_case
+  variable: snake_case
+  enum: pascal_case
+  enumMember: pascal_case  
+classes:
+  OneString:
+    fields:
+      length:
+        template: "strlen({{self}})"
+    methods:
+      substring:
+        template: "substr({{self}}, {{start}}, {{end}} - {{start}})"
+      split:
+        template: "explode({{separator}}, {{self}})"
+      get:
+        template: "{{self}}[{{idx}}]"
+      replace:
+        template: "str_replace({{from}}, {{to}}, {{self}})"
+      substrMatch:
+        template: "substr_compare({{self}}, {{str}}, {{offset}}, strlen({{str}})) === 0"
+  OneConsole:
+    methods:
+      print:
+        template: 'print(({{str}}) . "\n")'
+  OneArray:
+    fields:
+      length:
+        template: "count({{self}})"
+    methods:
+      add:
+        template: "{{self}}[] = {{item}}"
+      get:
+        template: "{{self}}[{{index}}]"
+      set:
+        template: "{{self}}[{{index}}] = {{value}}"
+  OneMap:
+    methods:
+      keys:
+        template: "array_keys({{self}})"
+      values:
+        template: "array_values({{self}})"
+      remove:
+        template: "unset({{self}}[{{key}}])"
+      hasKey:
+        template: "array_key_exists({{key}}, {{self}})"
+      get:
+        template: "{{self}}[{{key}}]"
+      set:
+        template: "{{self}}[{{key}}] = {{value}}"
+  OneFile:
+    methods:
+      readText:
+        template: "file_get_contents({{fn}})"
+  OneError:
+    methods:
+      raise:
+        template: throw new Exception({{message}})
+operators:
+  OneString + OneString:
+    template: "{{gen(left)}} . {{gen(right)}}"
+  OneString + OneCharacter:
+    template: "{{gen(left)}} . {{gen(right)}}"
+  OneString + OneNumber:
+    template: "{{gen(left)}} . {{gen(right)}}"
+  OneString + OneBoolean:
+    template: '{{gen(left)}} . (({{gen(right)}}) ? "true" : "false")'
+  OneString += OneString:
+    template: "{{gen(left)}} .= {{gen(right)}}"
+  OneString += OneCharacter:
+    template: "{{gen(left)}} .= {{gen(right)}}"
 templates:
   testGenerator: |-
-    $c = new {{class}}();
-    print($c->{{method}}() . "\\n");
+    try {
+        $c = new {{class}}();
+        $c->{{method}}();
+    } catch (Exception $err) {
+        echo 'Exception: ' . $err->getMessage() . "\n";
+    }
 
   main: |-
     <?php
@@ -37,18 +89,52 @@ templates:
       require_once("{{inc}}");
     {{/for}}
 
+    {{for enum in enums|sep=\n\n}}
+      class {{enum.name}} { 
+          {{for item in enum.values}}
+            const {{item.name}} = {{item.intValue}};
+          {{/for}}
+      };
+    {{/for}}
+
     {{for class in classes|sep=\n\n}}
-      class {{class.name}} {
+      class {{class.name}}{{if class.baseClass}} extends {{class.baseClass}}{{/if}} {
           {{for field in class.fields|sep=\n}}
-            {{field.visibility}} ${{field.name}};
+            {{field.visibility}} {{if field.static}}static {{/if}}${{field.name}}
+            {{if field.initializer|inline}}
+               = {{gen(field.initializer)}}
+            {{/if}}
+            ;
           {{/for}}
 
-          {{for method in class.methods|sep=\n\n}}
-              function {{method.name}}({{genArgs(method)}}) {
-                  {{genBody(method.body)}}
-              }
+          {{if class.constructor}}
+            function __construct({{genArgs(class.constructor)}}) {
+                {{genBody(class.constructor.body)}}
+            }
+          {{/if}}
+
+          {{for method in class.methods|sep="\n    \n"}}
+            {{if method.static}}static {{/if}}function {{method.name}}({{genArgs(method)}}) {
+                {{genBody(method.body)}}
+            }
           {{/for}}
       }
+
+      {{if class.reflect}}
+        OneReflect::setupClass(new OneClass("{{class.name}}", [
+            {{for field in class.fields|sep=\n}}
+              new OneField("{{field.name}}", {{if field.static}}true{{else}}false{{/if}}, "{{field.type}}"),
+            {{/for}}
+          ], [
+            {{for method in class.methods|sep=\n}}
+              new OneMethod("{{method.name}}", {{if method.static}}true{{else}}false{{/if}}, "{{method.returnType}}", [
+                {{for param in method.parameters|sep=\n}}
+                  new OneMethodArgument("{{param.name}}", "{{param.type}}"),
+                {{/for}}
+              ]),
+            {{/for}}
+          ]));
+      {{/if}}
     {{/for}}
 
   genBody:
@@ -76,7 +162,7 @@ templates:
   genVar:
     args:
       - name: itemVar
-    template: "${{itemVar.name}} = {{gen(itemVar.initializer)}}"
+    template: "${{itemVar.outName}} = {{gen(itemVar.initializer)}}"
 expressions:
   call: |-
     {{gen(expr.method)}}(
@@ -84,19 +170,22 @@ expressions:
         {{gen(arg)}}
       {{/for}}
     )
-  propertyAccess: "{{gen(expr.object)}}->{{gen(expr.propertyName)}}"
   identifier: "${{expr.text}}"
-  stringLiteral: "\"{{expr.value}}\""
+  stringLiteral: '"{{expr.escapedText}}"'
+  characterLiteral: '"{{expr.escapedText}}"'
   nullLiteral: "NULL"
-  return: "return {{gen(expr.expression)}};"
+  return: "return{{if expr.expression}} {{gen(expr.expression)}}{{/if}};"
   binary: "{{gen(expr.left)}} {{expr.operator}} {{gen(expr.right)}}"
   postfix: "{{gen(expr.operand)}}{{expr.operator}}"
   prefix: "{{expr.operator}}{{gen(expr.operand)}}"
+  throw: "throw {{gen(expr.expression)}};"
   parenthesized: "({{gen(expr.expression)}})"
   numericLiteral: "{{expr.value}}"
   variableDeclaration: "{{genVar(expr)}};"
-  new: "new {{gen(expr.class)}}({{genParams(expr.arguments)}})"
-  classReference: "{{expr.classRef.name}}"
+  new: "new {{gen(expr.cls)}}({{genParams(expr.arguments)}})"
+  classReference: "{{expr.classRef.outName}}"
+  enumReference: "{{expr.enumRef.outName}}"
+  enumMemberReference: "{{expr.enumRef.outName}}::{{expr.enumMemberRef.outName}}"
   arrayLiteral: "array({{genParams(expr.items)}})"
   mapLiteral: |- 
     array(
@@ -105,21 +194,42 @@ expressions:
       {{/for}}
     )
   expressionStatement: "{{gen(expr.expression)}};"
-  instanceMethod: "{{gen(expr.thisExpr)}}->{{expr.methodRef.name}}"
-  staticMethod: "{{expr.methodRef.classRef.name}}::{{expr.methodRef.name}}"
-  localVar: "${{expr.varRef.name}}"
-  methodArgument: "${{expr.varRef.name}}"
-  instanceField: "{{gen(expr.thisExpr)}}->{{expr.varRef.name}}"
+  instanceMethod: "{{gen(expr.thisExpr)}}->{{expr.methodRef.outName}}"
+  staticMethod: "{{expr.methodRef.classRef.outName}}::{{expr.methodRef.outName}}"
+  localVar: "${{expr.varRef.outName}}"
+  methodArgument: "${{expr.varRef.outName}}"
+  instanceField: "{{gen(expr.thisExpr)}}->{{expr.varRef.outName}}"
+  staticField: "{{gen(expr.thisExpr)}}::${{expr.varRef.outName}}"
   falseLiteral: "FALSE"
   trueLiteral: "TRUE"
   elementAccess: "{{gen(expr.object)}}[{{gen(expr.elementExpr)}}]"
   thisReference: "$this"
+  conditional: "{{gen(expr.condition)}} ? {{gen(expr.whenTrue)}} : ({{gen(expr.whenFalse)}})"
+  break: break;
+  templateString: |-
+    "
+    {{for part in expr.parts|inline}}
+      {{if part.literal|inline}}
+        {{part.text}}
+      {{else}}
+        {{if part.expr.valueType.isBoolean|inline}}
+          " . (({{gen(part.expr)}}) ? "true" : "false") . "
+        {{else}}
+          " . ({{gen(part.expr)}}) . "
+        {{/if}}
+      {{/if}}
+    {{/for}}
+    "
   foreach: |-
-    foreach ({{gen(expr.items)}} as ${{expr.itemVariable.name}}) {
+    foreach ({{gen(expr.items)}} as ${{expr.itemVariable.outName}}) {
         {{genBody(expr.body)}}
     }
   for: |-
     for ({{genVar(expr.itemVariable)}}; {{gen(expr.condition)}}; {{gen(expr.incrementor)}}) {
+        {{genBody(expr.body)}}
+    }
+  while: |-
+    while ({{gen(expr.condition)}}) {
         {{genBody(expr.body)}}
     }
   if: |-
@@ -127,10 +237,11 @@ expressions:
         {{genBody(expr.then)}}
     }
     {{if expr.else|inline}}
-      {{if isIfBlock(expr.else)}}
-        \ else {{genBody(expr.else)|inline}}
+      {{" "}}
+      {{if isIfBlock(expr.else)|inline}}
+        else{{genBody(expr.else)}}
       {{else}}
-        \ else {
+        else {
             {{genBody(expr.else)}}
         }
       {{/if}}

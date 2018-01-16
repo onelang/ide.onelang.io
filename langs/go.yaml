@@ -1,80 +1,232 @@
 extension: go
-casing:
+casing: # based on https://golang.org/doc/effective_go.html#mixed-caps
   class: pascal_case
   method: pascal_case
+  field: pascal_case # TODO: private
+  variable: camel_case # TODO: private
+  property: pascal_case # TODO: private
+  enum: pascal_case
+  enumMember: upper_case
 primitiveTypes:
   void: ""
-  boolean: bool
-  string: string
-  number: int
-array: '[]{{type}}'
-functions:
-  OneConsole.print:
-    includes: [fmt]
-    template: "fmt.Println({{str}})"
-  OneArray.add:
-    template: "{{self}} = append({{self}}, {{item}})"
-  OneArray.length:
-    template: "len({{self}})"
-  OneArray.get:
-    template: "{{self}}[{{index}}]"
-  OneArray.set:
-    template: "{{self}}[{{index}}] = {{value}}"
-  OneMap.keys:
-    extraArgs: [result]
-    template: |-
-      {{result}} := make([]{{typeArgs[0]}}, 0, len({{self}}))
-      for  key, _ := range {{self}} {
-        {{result}} = append({{result}}, key)
-      }
-  OneMap.values:
-    extraArgs: [result]
-    template: |-
-      {{result}} := make([]{{typeArgs[1]}}, 0, len({{self}}))
-      for  _, value := range {{self}} {
-        {{result}} = append({{result}}, value)
-      }
-  OneMap.remove:
-    template: "delete({{self}}, {{key}})"
-  OneMap.hasKey:
-    extraArgs: [result]
-    template: "_, {{result}} := {{self}}[{{key}}]"
-  OneMap.get:
-    template: "{{self}}[{{key}}]"
-  OneMap.set:
-    template: "{{self}}[{{key}}] = {{value}}"
+  any: "interface{}"
+genericsOverride: interface{}
+classes:
+  OneString:
+    type: string
+    fields:
+      length:
+        template: "len({{self}})"
+    methods:
+      substring:
+        template: "{{self}}[{{start}}:{{end}}]"
+      split:
+        #includes: [strings]
+        template: "strings.Split({{self}}, {{separator}})"
+      get:
+        template: "{{self}}[{{idx}}]"
+      substrMatch:
+        template: "{{self}}[{{offset}}:{{offset}} + len({{str}})] == {{str}}"
+      replace:
+        includes: [strings]
+        template: "strings.Replace({{self}}, {{from}}, {{to}}, -1)"
+  OneNumber:
+    type: int
+  OneBoolean:
+    type: bool
+  OneConsole:
+    methods:
+      print:
+        #includes: [fmt]
+        template: "fmt.Println({{str}})"
+  OneArray:
+    type: "[]{{typeArgs[0]}}"
+    fields:
+      length:
+        template: "len({{self}})"
+    methods:
+      add:
+        template: "{{self}} = append({{self}}, {{item}})"
+      get:
+        template: "{{self}}[{{index}}]"
+      set:
+        template: "{{self}}[{{index}}] = {{value}}"
+  OneMap:
+    methods:
+      keys:
+        extraArgs: [result]
+        template: |-
+          {{result}} := make([]{{typeArgs[0]}}, 0, len({{self}}))
+          for  key, _ := range {{self}} {
+            {{result}} = append({{result}}, key)
+          }
+      values:
+        extraArgs: [result]
+        template: |-
+          {{result}} := make([]{{typeArgs[1]}}, 0, len({{self}}))
+          for  _, value := range {{self}} {
+            {{result}} = append({{result}}, value)
+          }
+      remove:
+        template: "delete({{self}}, {{key}})"
+      hasKey:
+        extraArgs: [result]
+        template: "_, {{result}} := {{self}}[{{key}}]"
+      get:
+        template: "{{self}}[{{key}}]"
+      set:
+        template: "{{self}}[{{key}}] = {{value}}"
+  OneFile:
+    includes: [io/ioutil]
+    methods:
+      readText:
+        extraArgs: [result]
+        template: |-
+          file_content_bytes, _ := ioutil.ReadFile({{fn}})
+          {{result}} := string(file_content_bytes)
+  OneError:
+    methods:
+      raise:
+        template: panic({{message}})
+  OneRegex:
+    includes: [one]
+    template: "one.Regex"
+  OneReflect:
+    includes: [one]
+    template: "one.Reflect"
+operators:
+  OneString + OneNumber:
+    includes: [strconv]
+    template: "{{gen(left)}} + strconv.Itoa({{gen(right)}})"
+  OneString + OneBoolean:
+    includes: [strconv]
+    template: "{{gen(left)}} + strconv.FormatBool({{gen(right)}})"
+  OneString += OneCharacter:
+    template: "{{gen(left)}} += string({{gen(right)}})"
 templates:
   testGenerator: |-
     func main() {
-        c := ({{class}}{})
-        fmt.Println(c.{{method}}())
+        defer func() {
+          if r := recover(); r != nil {
+              fmt.Print("Exception: ", r)
+          }
+        }()
+
+        c := New{{class}}()
+        c.{{method}}();
     }
 
   main: |-
     package main
 
+    import "fmt"
     {{for inc in includes|sep=\n}}
       import "{{inc}}"
     {{/for}}
 
+    {{for enum in enums|sep=\n\n}}
+      type {{enum.name}} int
+      const (
+          {{for item in enum.values}}
+            {{enum.name}}_{{item.name}} = {{item.intValue}}
+          {{/for}}
+      )
+    {{/for}}
+
+    {{for interface in interfaces|sep=\n\n}}
+      type {{interface.name}} interface {
+          {{for baseIntf in interface.baseInterfaces}}
+            {{baseIntf}}
+          {{/for}}
+          {{for method in interface.methods|sep=\n\n}}
+            {{method.name}}({{genArgs(method)}}) 
+            {{if method.returnType|inline}}
+              {{getType(method.returnTypeInfo)}} 
+            {{/if}}
+          {{/for}}
+      }
+    {{/for}}
+    
     {{for class in classes|sep=\n\n}}
       type {{class.name}} struct {
-          {{for field in class.fields|sep=\n}}
-            {{field.name}} {{getType(field)}}
+          {{if class.baseClass}}
+            {{class.baseClass}}
+          {{/if}}
+          {{for field in class.instanceFields|sep=\n}}
+            {{field.name}} {{getType(field.typeInfo)}}
           {{/for}}
       }
 
+      func New{{class.name}}({{if class.constructor}}{{genArgs(class.constructor)}}{{/if}}) *{{class.name}} {
+          this := new({{class.name}})
+          {{for field in class.fields|sep=\n}}
+            {{if field.static == false && field.initializer}}
+              this.{{field.name}} = {{gen(field.initializer)}}
+            {{/if}}
+          {{/for}}
+          {{if class.constructor}}
+            {{genBody(class.constructor.body)}}
+          {{/if}}
+          return this
+      }
+
       {{for method in class.methods|sep=\n\n}}
-        func (this *{{class.name}}) {{method.name}}({{genArgs(method)}}) {{method.returnType}} {
+        func 
+        {{if method.static|inline}}
+          {{class.name}}_{{method.name}}
+        {{else}}
+          (this *{{class.name}}) {{method.name}}
+        {{/if}}
+        ({{genArgs(method)}}) 
+        {{if method.returnType|inline}}
+          {{getType(method.returnTypeInfo)}} 
+        {{/if}}
+        {
             {{genBody(method.body)}}
         }
       {{/for}}
+
+      {{for field in class.staticFields|sep=\n}}
+        var {{class.name}}{{field.name}} {{field.type}}{{if field.initializer}} = {{gen(field.initializer)}}{{/if}};
+      {{/for}}
     {{/for}}
 
+    func init() {
+      {{for class in classes|sep=\n\n}}
+        {{if class.reflect}}
+          one.Reflect_SetupClass((*{{class.name}})(nil), 
+              []*one.Field{
+                {{for field in class.fields}}
+                  {{if field.static}}
+                    one.Reflect_StaticField("{{field.name}}", &{{class.name}}{{field.name}}),
+                  {{else}}
+                    one.Reflect_InstanceField("{{field.name}}"),
+                  {{/if}}
+                {{/for}}
+              },
+              []*one.Method{
+                {{for method in class.methods}}
+                  {{if method.static}}
+                    one.Reflect_StaticMethod("{{method.name}}", {{class.name}}_{{method.name}}),
+                  {{else}}
+                    one.Reflect_InstanceMethod("{{method.name}}"),
+                  {{/if}}
+                {{/for}}
+              });
+        {{/if}}
+      {{/for}}
+    }
   getType:
     args:
       - name: item
-    template: "{{if item.typeInfo.isClass}}*{{/if}}{{item.type}}"
+    template: |-
+      {{if item.isComplexClass && !item.isOneArray &&!item.isInterface}}
+        *{{typeName(item)}}
+      {{elif item.isOneArray}}
+        []{{getType(item.typeArguments[0])}}
+      {{else}}
+        {{typeName(item)}}
+      {{/if}}
 
   genBody:
     args:
@@ -101,7 +253,7 @@ templates:
   genVar:
     args:
       - name: itemVar
-    template: "{{itemVar.name}} := {{gen(itemVar.initializer)}}"
+    template: "{{itemVar.outName}} := {{gen(itemVar.initializer)}}"
 expressions:
   call: |-
     {{gen(expr.method)}}(
@@ -111,18 +263,21 @@ expressions:
     )
   propertyAccess: "{{gen(expr.object)}}.{{gen(expr.propertyName)}}"
   identifier: "{{expr.text}}"
-  stringLiteral: "\"{{expr.value}}\""
+  stringLiteral: '"{{expr.escapedText}}"'
+  characterLiteral: "'{{expr.escapedTextSingle}}'"
   nullLiteral: "nil"
-  return: "return {{gen(expr.expression)}}"
+  return: "return{{if expr.expression}} {{gen(expr.expression)}}{{/if}}"
   binary: "{{gen(expr.left)}} {{expr.operator}} {{gen(expr.right)}}"
   postfix: "{{gen(expr.operand)}}{{expr.operator}}"
   prefix: "{{expr.operator}}{{gen(expr.operand)}}"
+  throw: "panic({{gen(expr.expression)}});"
   parenthesized: "({{gen(expr.expression)}})"
   numericLiteral: "{{expr.value}}"
   variableDeclaration: "{{genVar(expr)}}"
-  new: "{{gen(expr.class)}}{{{genParams(expr.arguments)}}}"
-  classReference: "{{expr.classRef.name}}"
-  arrayLiteral: "[]{{expr.typeArgs[0]}}{{{genParams(expr.items)}}}"
+  new: "New{{gen(expr.cls)}}({{genParams(expr.arguments)}})"
+  classReference: "{{clsName(expr.classRef)}}"
+  enumMemberReference: "{{expr.enumRef.outName}}_{{expr.enumMemberRef.outName}}"
+  arrayLiteral: "[]{{getType(expr.valueType.typeArguments[0])}}{{{genParams(expr.items)}}}"
   mapLiteral: |- 
     map[{{expr.typeArgs[0]}}]{{expr.typeArgs[1]}}{
       {{for prop in expr.properties|sep="\n"}}
@@ -130,21 +285,50 @@ expressions:
       {{/for}}
     }
   expressionStatement: "{{gen(expr.expression)}}"
-  instanceMethod: "{{gen(expr.thisExpr)}}.{{expr.methodRef.name}}"
-  staticMethod: "{{expr.methodRef.classRef.name}}.{{expr.methodRef.name}}"
-  localVar: "{{expr.varRef.name}}"
-  methodArgument: "{{expr.varRef.name}}"
-  instanceField: "{{gen(expr.thisExpr)}}.{{expr.varRef.name}}"
+  instanceMethod: "{{gen(expr.thisExpr)}}.{{expr.methodRef.outName}}"
+  staticMethod: "{{clsName(expr.methodRef.classRef)}}_{{expr.methodRef.outName}}"
+  localVar: "{{expr.varRef.outName}}"
+  methodArgument: "{{expr.varRef.outName}}"
+  instanceField: "{{gen(expr.thisExpr)}}.{{expr.varRef.outName}}"
+  staticField: "{{gen(expr.thisExpr)}}{{expr.varRef.outName}}"
   falseLiteral: "false"
   trueLiteral: "true"
   elementAccess: "{{gen(expr.object)}}[{{gen(expr.elementExpr)}}]"
   thisReference: this
+  break: break
+  templateString: |-
+    fmt.Sprintf("
+    {{for part in expr.parts|inline}}
+      {{if part.literal|inline}}
+        {{part.text}}
+      {{else}}
+        %v
+      {{/if}}
+    {{/for}}
+    "
+    {{for part in expr.parts|inline}}
+      {{if part.expr|inline}}
+        , {{gen(part.expr)}}
+      {{/if}}
+    {{/for}}
+    )
+  conditional: |-
+    var {{result}} {{typeName(expr.valueType)}}
+    if {{gen(expr.condition)}} {
+      {{result}} = {{gen(expr.whenTrue)}}
+    } else {
+      {{result}} = {{gen(expr.whenFalse)}}
+    }
   foreach: |-
-    for _, {{expr.itemVariable.name}} := range {{gen(expr.items)}} {
+    for _, {{expr.itemVariable.outName}} := range {{gen(expr.items)}} {
         {{genBody(expr.body)}}
     }
   for: |-
     for {{genVar(expr.itemVariable)}}; {{gen(expr.condition)}}; {{gen(expr.incrementor)}} {
+        {{genBody(expr.body)}}
+    }
+  while: |-
+    for {{gen(expr.condition)}} {
         {{genBody(expr.body)}}
     }
   if: |-
@@ -152,10 +336,11 @@ expressions:
         {{genBody(expr.then)}}
     }
     {{if expr.else|inline}}
-      {{if isIfBlock(expr.else)}}
-        \ else\ {{genBody(expr.else)|inline}}
+      {{" "}}
+      {{if isIfBlock(expr.else)|inline}}
+        else {{genBody(expr.else)}}
       {{else}}
-        \ else {
+        else {
             {{genBody(expr.else)}}
         }
       {{/if}}

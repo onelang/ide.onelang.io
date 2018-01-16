@@ -1,12 +1,15 @@
-import { Layout, LangUi } from "./UI/AppLayout";
+import { Layout, LangUi, EditorChangeHandler } from "./UI/AppLayout";
 import { CodeGenerator } from "./Generator/CodeGenerator";
 import { langConfigs, LangConfig, CompileResult, LangConfigs } from "./Generator/LangConfigs";
-import { TypeScriptParser } from "./Parsers/TypeScriptParser";
 import { ExposedPromise } from "./Utils/ExposedPromise";
 import { LangFileSchema } from "./Generator/LangFileSchema";
 import { OneCompiler } from "./OneCompiler";
+import { OverviewGenerator } from "./One/OverviewGenerator";
+import { AstHelper } from "./One/AstHelper";
 
 declare var YAML: any;
+
+const testPrgName = "InheritanceTest";
 
 const qs = {};
 location.search.substr(1).split('&').map(x => x.split('=')).forEach(x => qs[x[0]] = x[1]);
@@ -23,8 +26,10 @@ async function runLang(langConfig: LangConfig, code?: string) {
     if (!serverhost)
         throw new Error("No compilation backend!");
 
-    if (code)
+    if (code) {
         langConfig.request.code = code;
+        langConfig.request.stdlibCode = layout.langs[langConfig.name].stdLibHandler.getContent();
+    }
     
     const endpoint = httpsMode ? `${serverhost}/${langConfig.httpsEndpoint || "compile"}` : 
         `http://${serverhost}:${langConfig.port}/compile`;
@@ -49,7 +54,7 @@ async function runLangTests() {
         runLang(lang);
 }
 
-const layout = new Layout();
+const layout = new Layout(["typescript"/*, "csharp"*/]);
 
 function escapeHtml(unsafe) {
     return unsafe.toString()
@@ -71,26 +76,50 @@ function escapeHtml(unsafe) {
 }
 
 class CompileHelper {
-    overlayContent: string;
-    stdlibContent: string;
-    genericTransforms: string;
+    compiler: OneCompiler;
+    astOverview: string;
+    astJsonOverview: string;
 
     constructor(public langConfigs: LangConfigs) { }
 
-    async init() {
-        this.overlayContent = await downloadTextFile(`langs/NativeResolvers/typescript.ts`);
-        this.stdlibContent = await downloadTextFile(`langs/StdLibs/stdlib.d.ts`);
-        this.genericTransforms = await downloadTextFile(`langs/NativeResolvers/GenericTransforms.yaml`);
-
-        for (const lang of Object.values(this.langConfigs))
-            lang.schemaYaml = await downloadTextFile(`langs/${lang.name}.yaml`);
+    async setContent(handler: EditorChangeHandler, url: string) {
+        const content = await downloadTextFile(url);
+        handler.setContent(content);
     }
 
-    compile(programCode: string, langName: string) {
-        const compiler = new OneCompiler();
-        compiler.parseFromTS(programCode, this.overlayContent, this.stdlibContent, this.genericTransforms);
+    async init() {
+        const tasks: Promise<void>[] = [];
+
+        for (const lang of layout.inputLangs)
+            tasks.push(this.setContent(layout.langs[lang].overlayHandler, `langs/NativeResolvers/${lang}.ts`));
+
+        tasks.push(this.setContent(layout.oneStdLibHandler, `langs/StdLibs/stdlib.d.ts`));
+        tasks.push(this.setContent(layout.genericTransformsHandler, `langs/NativeResolvers/GenericTransforms.yaml`));
+
+        for (const lang of Object.values(this.langConfigs)) {
+            tasks.push(this.setContent(layout.langs[lang.name].generatorHandler, `langs/${lang.name}.yaml`));
+            tasks.push(this.setContent(layout.langs[lang.name].stdLibHandler, `langs/StdLibs/${lang.stdlibFn}`));
+        }
+
+        await Promise.all(tasks);
+    }
+
+    setProgram(programCode: string, langName: string) {
+        this.compiler = new OneCompiler();
+
+        const overlayContent = layout.langs[langName].overlayHandler.getContent();
+        const oneStdLibContent = layout.oneStdLibHandler.getContent();
+        const genericTransforms = layout.genericTransformsHandler.getContent();
+        
+        this.compiler.parse(langName, programCode, overlayContent, oneStdLibContent, genericTransforms);
+        this.astOverview = new OverviewGenerator().generate(this.compiler.schemaCtx);
+        this.astJsonOverview = AstHelper.toJson(this.compiler.schemaCtx.schema);
+    }
+
+    compile(langName: string) {
         const lang = this.langConfigs[langName];
-        const code = compiler.compile(lang.schemaYaml, langName, !lang.request.className);
+        const schemaYaml = layout.langs[langName].generatorHandler.getContent();
+        const code = this.compiler.compile(schemaYaml, langName, true);
         return code;
     }
 }
@@ -115,7 +144,7 @@ async function runLangUi(langName: string, codeCallback: () => string) {
             if (result.endsWith("\n"))
                 result = result.substr(0, result.length - 1);
 
-            langUi.statusBar.attr("title", "");
+            langUi.statusBar.attr("title", result);
             html`<span class="label success">${respJson.elapsedMs}ms</span><span class="result">${result || "<no result>"}</span>`(langUi.statusBar);
             return result;
         }
@@ -125,21 +154,55 @@ async function runLangUi(langName: string, codeCallback: () => string) {
     }
 }
 
+let AceRange = require("ace/range").Range;
+class MarkerManager {
+    markerRemovalCallbacks: (() => void)[] = [];
+
+    addMarker(editor: AceAjax.Editor, start: number, end: number, focus: boolean) {
+        const session = editor.getSession();
+        const document = session.getDocument();
+        const startPos = document.indexToPosition(start, 0);
+        const endPos = document.indexToPosition(end, 0);
+        const range = <AceAjax.Range>new AceRange(startPos.row, startPos.column, endPos.row, endPos.column);
+        const markerId = session.addMarker(range, startPos.row !== endPos.row ? "ace_step_multiline" : "ace_step", "text", false);
+        this.markerRemovalCallbacks.push(() => session.removeMarker(markerId));
+        if (focus) {
+            (<any>editor).renderer.scrollCursorIntoView({ row: endPos.row, column: endPos.column + 3 }, 0.5);
+            (<any>editor).renderer.scrollCursorIntoView({ row: startPos.row, column: startPos.column - 3 }, 0.5);
+        }
+    }
+
+    removeMarkers() {
+        for (const cb of this.markerRemovalCallbacks)
+            cb();
+    }
+
+    getFileOffset(editor: AceAjax.Editor) {
+        return editor.getSession().getDocument().positionToIndex(editor.getCursorPosition(), 0);
+    }
+}
+let markerManager = new MarkerManager();
+
 function initLayout() {
     layout.init();
     layout.onEditorChange = async (sourceLang: string, newContent: string) => {
         console.log("editor change", sourceLang, newContent);
+        markerManager.removeMarkers();
 
-        if (sourceLang === "typescript") {
+        if (layout.inputLangs.includes(sourceLang)) {
+            compileHelper.setProgram(newContent, sourceLang);
             const sourceLangPromise = new ExposedPromise<string>();
             await Promise.all(Object.keys(layout.langs).map(async langName => {
                 const langUi = layout.langs[langName];
                 const isSourceLang = langName === sourceLang;
     
                 const result = await runLangUi(langName, () => {
-                    const code = compileHelper.compile(newContent, langName);
-                    if (!isSourceLang)
-                        langUi.changeHandler.setContent(code);
+                    const code = compileHelper.compile(langName);
+                    (isSourceLang ? langUi.generatedHandler : langUi.changeHandler).setContent(code);
+                    if (isSourceLang) {
+                        langUi.astHandler.setContent(compileHelper.astOverview);
+                        langUi.astJsonHandler.setContent(compileHelper.astJsonOverview);
+                    }
                     return code;
                 });
                 
@@ -154,13 +217,33 @@ function initLayout() {
             runLangUi(sourceLang, () => newContent);
         }
     };
+
+    window["layout"] = layout;
+
+    for (const inputLang_ of layout.inputLangs) {
+        const inputLang = inputLang_;
+        const inputEditor = layout.langs[inputLang].changeHandler.editor;
+        inputEditor.getSelection().on('changeCursor', () => {
+            if (!compileHelper.compiler || compileHelper.compiler.langName !== inputLang) return;
+            markerManager.removeMarkers();
+            const index = markerManager.getFileOffset(inputEditor);
+            const node = compileHelper.compiler.parser.nodeManager.getNodeAtOffset(index);
+            if (!node) return;
+            console.log(index, node);
+            markerManager.addMarker(inputEditor, node.nodeData.sourceRange.start, node.nodeData.sourceRange.end, false);
+            for (const langName of Object.keys(node.nodeData.destRanges)) {
+                const dstRange = node.nodeData.destRanges[langName];
+                markerManager.addMarker(layout.langs[langName].generatedHandler.editor, dstRange.start, dstRange.end, true);
+            }
+        });
+    }
 }
 
 //runLangTests();
 
 async function setupTestProgram() {
-    const testPrg = await downloadTextFile("input/Test.ts");
-    layout.langs["typescript"].changeHandler.setContent(testPrg, true);
+    const testPrg = await downloadTextFile(`input/${testPrgName}.ts`);
+    layout.langs["typescript"].changeHandler.setContent(testPrg.replace(/\r\n/g, '\n'), true);
 }
 
 async function main() {

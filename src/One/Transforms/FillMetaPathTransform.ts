@@ -46,7 +46,8 @@ export class FillMetaPathTransform extends AstVisitor<Context> implements ISchem
         const ifContext = this.subContext(context, stmt, "if");
         this.visitExpression(stmt.condition, ifContext);
         this.visitBlock(stmt.then, this.subContext(ifContext, stmt.then, "then"));
-        this.visitBlock(stmt.else, this.subContext(ifContext, stmt.then, "else"));
+        if (stmt.else)
+            this.visitBlock(stmt.else, this.subContext(ifContext, stmt.then, "else"));
     }
 
     protected visitWhileStatement(stmt: one.WhileStatement, context: Context) {
@@ -61,12 +62,16 @@ export class FillMetaPathTransform extends AstVisitor<Context> implements ISchem
         super.visitForeachStatement(stmt, this.subContext(context, stmt, "foreach"));
     }
 
-    protected visitMethod(method: one.Method, context: Context) {
-        super.visitMethod(method, this.subContext(context, method));
+    protected visitMethodLike(method: one.Method|one.Constructor, context: Context) {
+        super.visitMethodLike(method, this.subContext(context, method));
     }
 
     protected visitClass(cls: one.Class, context: Context) {
         super.visitClass(cls, this.subContext(context, cls));
+    }
+    
+    protected visitInterface(intf: one.Interface, context: Context) {
+        super.visitInterface(intf, this.subContext(context, intf));
     }
     
     transform(schemaCtx: SchemaContext) {

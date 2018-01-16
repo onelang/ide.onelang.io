@@ -2,101 +2,242 @@ extension: cpp
 casing:
   class: pascal_case
   method: camel_case
+  field: snake_case
+  property: snake_case
+  variable: snake_case
+  enum: pascal_case
+  enumMember: pascal_case
 primitiveTypes:
   void: void
-  boolean: bool
-  string: std::string
-  number: int
-array: '{{type}}[]'
-functions:
-  OneConsole.print:
+  any: any
+classes:
+  OneString:
+    type: string
+    fields:
+      length:
+        template: "{{self}}.size()"
+    methods:
+      substring:
+        template: "{{self}}.substr({{start}}, {{end}} - {{start}})"
+      split:
+        template: "OneStringHelper::split({{self}}, {{separator}})"
+      get:
+        template: "{{self}}[{{idx}}]"
+      replace:
+        template: "OneStringHelper::replace({{self}}, {{from}}, {{to}})"
+      substrMatch:
+        template: "{{self}}.compare({{offset}}, {{str}}.size(), {{str}}) == 0"
+  OneNumber:
+    type: int
+  OneBoolean:
+    type: bool
+  OneArray:
+    includes: [vector]
+    type: "vec<{{typeArgs[0]}}>"
+    fields:
+      length: 
+        template: "{{self}}->size()"
+    methods:
+      add: 
+        template: "{{self}}->push_back({{item}})"
+      get: 
+        template: "{{self}}->at({{index}})"
+      set: 
+        template: "(*{{self}})[{{index}}] = {{value}}"
+  OneMap:
+    includes: [map]
+    methods:
+      keys: 
+        template: "OneMapHelper::keys({{self}})"
+      values: 
+        template: "OneMapHelper::values({{self}})"
+      remove: 
+        template: "{{self}}->erase({{key}})"
+      hasKey: 
+        template: "{{self}}->find({{key}}) != {{self}}.end()"
+      get: 
+        template: "{{self}}[{{key}}]"
+      set: 
+        template: "{{self}}[{{key}}] = {{value}}"
+  OneConsole:
     includes: [iostream]
-    template: "std::cout << {{str}} << std::endl"
-  OneArray.add:
-    includes: [vector]
-    template: "{{self}}->push_back({{item}})"
-  OneArray.length:
-    includes: [vector]
-    template: "{{self}}->size()"
-  OneArray.get:
-    template: "(*{{self}})[{{index}}]"
-  OneArray.set:
-    template: "(*{{self}})[{{index}}] = {{value}}"
-  OneMap.keys:
-    template: "MapHelper::keys(*{{self}})"
-  OneMap.values:
-    template: "MapHelper::values(*{{self}})"
-  OneMap.remove:
-    template: "{{self}}->erase({{key}})"
-  OneMap.hasKey:
-    template: "{{self}}->find({{key}}) != {{self}}->end()"
-  OneMap.get:
-    template: "(*{{self}})[{{key}}]"
-  OneMap.set:
-    template: "(*{{self}})[{{key}}] = {{value}}"
+    methods:
+      print:
+        template: "cout << ({{str}}) << endl"
+  OneError:
+    includes: [stdexcept]
+    methods:
+      raise:
+        template: throw std::runtime_error({{message}})
+operators:
+  OneString + OneNumber:
+    includes: [string]
+    template: "{{gen(left)}} + to_string({{gen(right)}})"
+  OneString + OneBoolean:
+    template: '{{gen(left)}} + ({{gen(right)}} ? "true" : "false")'
+includes: [memory, fstream, vector, map]
 templates:
   testGenerator: |-
     int main()
     {
-        {{class}} c;
-        std::cout << c.{{method}}() << std::endl;
+        try {
+            {{class}} c;
+            c.{{method}}();
+        } catch(std::exception& err) {
+            cout << "Exception: " << err.what() << '\n';
+        }
         return 0;
     }
 
   main: |-
-    #include <map>
-    #include <memory>
+    #include <one.hpp>
     {{for inc in includes|sep=\n}}
       #include <{{inc}}>
     {{/for}}
 
-    class MapHelper {
-      public:
-        template<typename K, typename V> static std::shared_ptr<std::vector<K>> keys(const std::map<K,V>& map) {
-            std::vector<K> result;
-            for(auto it = map.begin(); it != map.end(); ++it)
-                result.push_back(it->first);
-            return std::make_shared<std::vector<K>>(result);
-        }
+    {{for enum in enums|sep=\n}}
+      enum class {{enum.name}} { 
+      {{for item in enum.values|inline sep=", "}}
+        {{item.name}}
+      {{/for}}
+       };
+      const char* {{enum.name}}ToStr[] = { 
+      {{for item in enum.values|inline sep=", "}}
+        "{{item.origName}}"
+      {{/for}}
+       };
+    {{/for}}
 
-        template<typename K, typename V> static std::shared_ptr<std::vector<V>> values(const std::map<K,V>& map) {
-            std::vector<V> result;
-            for(auto it = map.begin(); it != map.end(); ++it)
-                result.push_back(it->second);
-            return std::make_shared<std::vector<V>>(result);
-        }
-    };
-
-    {{for class in classes|sep=\n\n}}
-      class {{class.name}} {
+    {{for interface in interfaces|sep=\n\n}}
+      {{genClassSignature(interface)}} {
         public:
-          {{for field in class.publicFields|sep=\n}}
-            {{getType(field)}} {{field.name}};
+          {{for method in interface.methods|sep="\n    \n"}}
+            virtual {{getType(method.returnTypeInfo)}} {{method.name}}({{genArgs(method)}}) = 0;
           {{/for}}
-          {{genMethods(class.publicMethods)}}
-
-        private:
-          {{for field in class.privateFields|sep=\n}}
-            {{getType(field)}} {{field.name}};
-          {{/for}}
-          {{genMethods(class.privateMethods)}}
       };
     {{/for}}
 
+    {{for class in classes|sep=\n\n}}
+      {{genClassSignature(class)}} {
+        public:
+          {{genFields(class.publicFields)}}
+
+          {{if class.constructor}}
+            {{class.name}}({{genArgs(class.constructor)}}) {
+                {{genBody(class.constructor.body)}}
+            }
+          {{/if}}
+
+          {{genMethods(class.publicMethods)}}
+
+        private:
+          {{genFields(class.privateFields)}}
+
+          {{genMethods(class.privateMethods)}}
+      };
+
+      {{for field in class.fields|sep=\n}}
+        {{if field.static && field.initializer}}
+          {{getType(field.typeInfo)}} {{class.name}}::{{field.name}} = {{gen(field.initializer)}};
+        {{/if}}
+      {{/for}}
+      
+      {{if class.reflect}}
+        static struct Reflection{{class.name}}
+        {
+          Reflection{{class.name}}() {
+            OneReflect::addClass("{{class.name}}", typeid({{class.name}}))
+              {{for field in class.fields}}
+                {{if field.static}}
+                  .addField(make_shared<OneField>("{{field.name}}", /*isStatic*/ true, "{{field.type}}", 
+                      [](sp<ReflectedClass> obj){ return (any){{class.name}}::{{field.name}}; },
+                      [](sp<ReflectedClass> obj, any value){ {{class.name}}::{{field.name}} = any_cast<{{field.type}}>(value); }))
+                {{else}}
+                  .addField(make_shared<OneField>("{{field.name}}", /*isStatic*/ false, "{{field.type}}", 
+                      [](sp<ReflectedClass> obj){ return (any)static_pointer_cast<{{class.name}}>(obj)->{{field.name}}; },
+                      [](sp<ReflectedClass> obj, any value){ static_pointer_cast<{{class.name}}>(obj)->{{field.name}} = any_cast<{{field.type}}>(value); }))
+                {{/if}}
+              {{/for}}
+              {{for method in class.methods}}
+                .addMethod(make_shared<OneMethod>("{{method.name}}", /*isStatic*/ {{if method.static}}true{{else}}false{{/if}}, "{{method.returnType}}", vector<OneMethodArgument> {
+                    {{for param in method.parameters}}
+                      OneMethodArgument("{{param.name}}", "{{param.type}}"),
+                    {{/for}}
+                  }, 
+                  [](sp<ReflectedClass> obj, vec<any> args){ 
+                    {{if !method.returnTypeInfo.isVoid}}return (any){{/if}}
+                    {{if method.static|inline}}
+                      {{class.name}}::{{method.name}}
+                    {{else|inline}}
+                      static_pointer_cast<{{class.name}}>(obj)->{{method.name}}
+                    {{/if}}
+                    (
+                      {{for param in method.parameters|inline sep=,}}
+                        any_cast<{{param.type}}>(args->at({{param_idx}}))
+                      {{/for}}
+                    ); 
+                    {{if method.returnTypeInfo.isVoid|inline}}return (any)nullptr; {{/if}}
+                  }))
+              {{/for}}
+              ;
+          }
+        } _reflection{{class.name}};
+      {{/if}}
+    {{/for}}
+  genFields:
+    args:
+      - name: fields
+    template: |-
+      {{for field in fields|sep=\n}}
+        {{if field.static}}static {{/if}}{{getType(field.typeInfo)}} {{field.name}}{{if !field.static && field.initializer}} = {{gen(field.initializer)}}{{/if}};
+      {{/for}}
   getType:
     args:
       - name: item
-    template: "{{item.type}}{{if item.typeInfo.isClass}}*{{/if}}"
+    template: |-
+      {{if item.isComplexClass && !item.isOneArray}}
+        sp<{{typeName(item)}}>
+      {{elif item.isOneArray}}
+        vec<{{getType(item.typeArguments[0])}}>
+      {{else}}
+        {{typeName(item)}}
+      {{/if}}
+
+  getTypeX:
+    args:
+      - name: type
+    template: "{{typeName(type)}}{{if type.isComplexClass}}*{{/if}}"
 
   genMethods:
     args:
       - name: methods
     template: |-
       {{for method in methods|sep=\n\n}}
-        {{method.returnType}} {{method.name}}({{genArgs(method)}}) {
+        {{if method.static}}static {{/if}}{{if method.attributes["virtual"]}}virtual {{/if}}{{getType(method.returnTypeInfo)}} {{method.name}}({{genArgs(method)}}) {
             {{genBody(method.body)}}
         }
       {{/for}}
+
+  genClassSignature:
+    args: [{name: class}]
+    template: |-
+      {{if class.typeArguments|inline}}
+        template<
+        {{for arg in class.typeArguments|inline sep=", "}}
+          typename {{arg}}
+        {{/for}}
+        >
+      {{/if}}
+      class {{class.name}}
+      {{if class.baseClasses.length > 0 or class.reflect|inline}}
+         : 
+        {{for item in class.baseClasses|inline sep=", "}}
+          public {{item}}
+        {{/for}}
+        {{if class.reflect}}
+          {{if class.baseClasses.length > 0}}, {{/if}}public ReflectedClass
+        {{/if}}
+      {{/if}}
 
   genBody:
     args:
@@ -123,7 +264,8 @@ templates:
   genVar:
     args:
       - name: itemVar
-    template: "auto {{itemVar.name}} = {{gen(itemVar.initializer)}}"
+    template: |-
+      {{if itemVar.type.isNumber}}int{{else}}auto{{/if}} {{itemVar.outName}} = {{gen(itemVar.initializer)}}
 expressions:
   call: |-
     {{gen(expr.method)}}(
@@ -133,52 +275,90 @@ expressions:
     )
   propertyAccess: "{{gen(expr.object)}}->{{gen(expr.propertyName)}}"
   identifier: "{{expr.text}}"
-  stringLiteral: "std::string(\"{{expr.value}}\")"
-  return: "return {{gen(expr.expression)}};"
+  stringLiteral: 'string("{{expr.escapedText}}")'
+  characterLiteral: "'{{expr.escapedTextSingle}}'"
+  return: "return{{if expr.expression}} {{gen(expr.expression)}}{{/if}};"
   binary: "{{gen(expr.left)}} {{expr.operator}} {{gen(expr.right)}}"
   postfix: "{{gen(expr.operand)}}{{expr.operator}}"
   prefix: "{{expr.operator}}{{gen(expr.operand)}}"
+  throw: "throw {{gen(expr.expression)}};"
   parenthesized: "({{gen(expr.expression)}})"
   numericLiteral: "{{expr.value}}"
   nullLiteral: "nullptr"
   variableDeclaration: "{{genVar(expr)}};"
-  new: "std::make_shared<{{gen(expr.class)}}>({{genParams(expr.arguments)}})"
-  classReference: "{{expr.classRef.name}}"
-  arrayLiteral: "std::make_shared<std::vector<{{expr.typeArgs[0]}}>>(std::vector<{{expr.typeArgs[0]}}> { {{genParams(expr.items)}} })"
+  new: |-
+    make_shared<{{gen(expr.cls)}}
+      {{if expr.typeArguments.length > 0|inline}}
+        <
+        {{for arg in expr.typeArguments|inline sep=", "}}
+          {{typeName(arg)}}
+        {{/for}}
+        >
+      {{/if}}
+    >({{genParams(expr.arguments)}})
+
+  classReference: "{{expr.classRef.outName}}"
+  enumReference: "{{expr.enumRef.outName}}"
+  enumMemberReference: "{{expr.enumRef.outName}}::{{expr.enumMemberRef.outName}}"
+  arrayLiteral: "make_shared<vector<{{getType(expr.valueType.typeArguments[0])}}>>(initializer_list<{{getType(expr.valueType.typeArguments[0])}}>{ {{genParams(expr.items)}} })"
   mapLiteral: |- 
-    std::make_shared<std::map<{{expr.typeArgs[0]}}, {{expr.typeArgs[1]}}>>(std::map<{{expr.typeArgs[0]}}, {{expr.typeArgs[1]}}> {
+    map<{{getType(expr.valueType.typeArguments[0])}}, {{getType(expr.valueType.typeArguments[1])}}> {
       {{for prop in expr.properties|sep=",\n"}}
         { "{{prop.name}}", {{gen(prop.initializer)}} }
       {{/for}}
-    })
+    }
   expressionStatement: "{{gen(expr.expression)}};"
-  instanceMethod: "{{gen(expr.thisExpr)}}->{{expr.methodRef.name}}"
-  staticMethod: "{{expr.methodRef.classRef.name}}::{{expr.methodRef.name}}"
-  localVar: "{{expr.varRef.name}}"
-  methodArgument: "{{expr.varRef.name}}"
-  instanceField: "{{gen(expr.thisExpr)}}->{{expr.varRef.name}}"
+  instanceMethod: "{{gen(expr.thisExpr)}}->{{expr.methodRef.outName}}"
+  staticMethod: "{{expr.methodRef.classRef.outName}}::{{expr.methodRef.outName}}"
+  localVar: "{{expr.varRef.outName}}"
+  methodArgument: "{{expr.varRef.outName}}"
+  instanceField: "{{gen(expr.thisExpr)}}->{{expr.varRef.outName}}"
+  staticField: "{{gen(expr.thisExpr)}}::{{expr.varRef.outName}}"
   falseLiteral: "false"
   trueLiteral: "true"
   elementAccess: "(*{{gen(expr.object)}})[{{gen(expr.elementExpr)}}]"
   thisReference: this
+  cast: "static_cast<{{typeName(expr.newType)}}>({{gen(expr.expression)}})"
+  conditional: "{{gen(expr.condition)}} ? {{gen(expr.whenTrue)}} : {{gen(expr.whenFalse)}}"
+  templateString: |-
+    string() + 
+    {{for part in expr.parts|sep=" + " inline}}
+      {{if part.literal|inline}}
+        "{{part.text}}"
+      {{elif part.expr.valueType.isNumber|inline}}
+        to_string({{gen(part.expr)}})
+      {{elif part.expr.valueType.isEnum|inline}}
+        {{part.expr.valueType.enumName}}ToStr[(int)({{gen(part.expr)}})]
+      {{elif part.expr.valueType.isBoolean|inline}}
+        (({{gen(part.expr)}}) ? "true" : "false")
+      {{else}}
+        {{gen(part.expr)}}
+      {{/if}}
+    {{/for}}
   foreach: |-
     for (auto it = {{gen(expr.items)}}->begin(); it != {{gen(expr.items)}}->end(); ++it) {
-        auto {{expr.itemVariable.name}} = *it;
+        auto {{expr.itemVariable.outName}} = *it;
         {{genBody(expr.body)}}
     }
   for: |-
     for ({{genVar(expr.itemVariable)}}; {{gen(expr.condition)}}; {{gen(expr.incrementor)}}) {
         {{genBody(expr.body)}}
     }
+  while: |-
+    while ({{gen(expr.condition)}}) {
+        {{genBody(expr.body)}}
+    }
+  break: break;
   if: |-
     if ({{gen(expr.condition)}}) {
         {{genBody(expr.then)}}
     }
     {{if expr.else|inline}}
-      {{if isIfBlock(expr.else)}}
-        \ else\ {{genBody(expr.else)|inline}}
+      {{" "}}
+      {{if isIfBlock(expr.else)|inline}}
+        else {{genBody(expr.else)|inline}}
       {{else}}
-        \ else {
+        else {
             {{genBody(expr.else)}}
         }
       {{/if}}

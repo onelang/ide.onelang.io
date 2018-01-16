@@ -2,65 +2,112 @@ import { OneAst as one } from "../Ast";
 import { AstVisitor } from "../AstVisitor";
 import { ISchemaTransform } from "../SchemaTransformer";
 import { SchemaContext } from "../SchemaContext";
-import { OverviewGenerator } from "../OverviewGenerator";
 import { AstHelper } from "../AstHelper";
 import { LangFileSchema } from "../../Generator/LangFileSchema";
 
-export class CaseConverter extends AstVisitor<void> {
-    constructor(public casing: LangFileSchema.CasingOptions) { super(); }
+export class CaseConverter {
+    static splitName(name: string, error?: (msg: string) => void) {
+        let parts: string[] = [];
+        let currPart = "";
 
-    toSnakeCase(name: string) { 
-        let result = "";
         for (let c of name) {
-            if ("A" <= c && c <= "Z")
-                result += (result === "" ? "" : "_") + c.toLowerCase();
-            else if("a" <= c && c <= "z" || c === "_" || "0" <= c && c <= "9")
-                result += c;
-            else
-                this.log(`Invalid character ('${c}') in name: ${name}.`);
+            if (("A" <= c && c <= "Z") || c === "_") {
+                if (currPart !== "") {
+                    parts.push(currPart);
+                    currPart = "";
+                }
+
+                if (c !== "_")
+                    currPart += c.toLowerCase();
+            } else if("a" <= c && c <= "z" || "0" <= c && c <= "9") {
+                currPart += c;
+            } else {
+                error && error(`Invalid character ('${c}') in name: ${name}.`);
+            }
         }
-        return result;
+
+        if (currPart !== "")
+            parts.push(currPart);
+
+        let prefixLen = 0, postfixLen = 0;
+        for (; prefixLen < name.length && name[prefixLen] === '_'; prefixLen++) { }
+        for (; postfixLen < name.length && name[name.length - postfixLen - 1] === '_'; postfixLen++) { }
+
+        if (prefixLen > 0)
+            parts[0] = "_".repeat(prefixLen) + parts[0];
+
+        if (postfixLen > 0)
+            parts[parts.length - 1] = parts[parts.length - 1] + "_".repeat(postfixLen);
+
+        return parts;
     }
 
-    getName(name: string, type: "class"|"method"|"field"|"property"|"variable"|"enum") {
-        const snakeCase = this.toSnakeCase(name);
-        const casing = this.casing[type];
-        if (!casing) return snakeCase; // TODO
+    static convert(name: string, newCasing: "snake"|"pascal"|"camel"|"upper", error?: (msg: string) => void) {
+        const parts = CaseConverter.splitName(name);
 
-        const parts = snakeCase.split("_").map(x => x.toLowerCase());
-        if (casing === LangFileSchema.Casing.CamelCase)
+        if (newCasing === "camel")
             return parts[0] + parts.splice(1).map(x => x.ucFirst()).join("");
-        else if (casing === LangFileSchema.Casing.PascalCase)
+        else if (newCasing === "pascal")
             return parts.map(x => x.ucFirst()).join("");
-        else if (casing === LangFileSchema.Casing.SnakeCase)
+        else if (newCasing === "upper")
+            return parts.map(x => x.toUpperCase()).join("_");
+        else if (newCasing === "snake")
             return parts.join("_");
         else
-            this.log(`Unknown casing: ${casing}`);
+            error(`Unknown casing: ${newCasing}`);
+    }
+}
+
+export class SchemaCaseConverter extends AstVisitor<void> {
+    constructor(public casing: LangFileSchema.CasingOptions) { super(); }
+
+    getName(name: string, type: "class"|"method"|"field"|"property"|"variable"|"enum"|"enumMember") {
+        // TODO: throw exception instead of using default snake_case?
+        return CaseConverter.convert(name, 
+            this.casing[type] === LangFileSchema.Casing.PascalCase ? "pascal" :
+            this.casing[type] === LangFileSchema.Casing.CamelCase ? "camel" :
+            this.casing[type] === LangFileSchema.Casing.UpperCase ? "upper" : 
+            "snake", this.log);
     }
 
     protected visitMethod(method: one.Method) {
-        method.name = this.getName(method.name, "method");
         super.visitMethod(method, null);
+        method.outName = this.getName(method.name, "method");
     }
  
     protected visitField(field: one.Field) {
-        field.name = this.getName(field.name, "field");
         super.visitField(field, null);
+        field.outName = this.getName(field.name, "field");
     }
  
     protected visitProperty(prop: one.Property) {
-        prop.name = this.getName(prop.name, "property");
         super.visitProperty(prop, null);
+        prop.outName = this.getName(prop.name, "property");
     }
 
     protected visitClass(cls: one.Class) {
-        cls.name = this.getName(cls.name, "class");
         super.visitClass(cls, null);
+        cls.outName = this.getName(cls.name, "class");
     }
 
-    protected visitVariableDeclaration(stmt: one.VariableDeclaration) {
-        stmt.name = this.getName(stmt.name, "variable");
-        super.visitVariableDeclaration(stmt, null);
+    protected visitInterface(intf: one.Interface) {
+        super.visitInterface(intf, null);
+        intf.outName = this.getName(intf.name, "class");
+    }
+
+    protected visitEnum(enum_: one.Enum) {
+        super.visitEnum(enum_, null);
+        enum_.outName = this.getName(enum_.name, "enum");
+    }
+
+    protected visitEnumMember(enumMember: one.EnumMember) {
+        super.visitEnumMember(enumMember, null);
+        enumMember.outName = this.getName(enumMember.name, "enumMember");
+    }
+
+    protected visitVariable(stmt: one.VariableBase) {
+        super.visitVariable(stmt, null);
+        stmt.outName = this.getName(stmt.name, "variable");
     }
 
     process(schema: one.Schema) {

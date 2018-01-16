@@ -103,6 +103,10 @@
             cb(new ClosableComponent(this, generator, show));
             return this;
         }
+        setActiveTab(tabIndex) {
+            this.contentItem.setActiveContentItem(this.contentItem.contentItems[tabIndex]);
+            return this;
+        }
         init() {
             for (var child of this.children)
                 child.init();

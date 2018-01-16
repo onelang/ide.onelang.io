@@ -9,17 +9,15 @@ export class FillVariableMutability extends AstVisitor<boolean> {
     constructor(public lang: LangFileSchema.LangFile) { super(); }
     
     protected visitBinaryExpression(expr: one.BinaryExpression, isMutable: boolean) {
-        this.visitExpression(expr.left, expr.operator === "=");
+        this.visitExpression(expr.left, ["=", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "<<=", ">>="].includes(expr.operator));
         this.visitExpression(expr.right, false);
     }
 
     protected visitCallExpression(callExpr: one.CallExpression, isMutable: boolean) {
-        const methodRef = <one.MethodReference> callExpr.method;
-        const metaPath = methodRef.methodRef.metaPath;
-        const methodPath = metaPath && metaPath.replace(/\//g, ".");
-        const method = this.lang.functions[methodPath];
-
-        this.visitExpression(callExpr.method, method && method.mutates);
+        const method = AstHelper.getMethodFromRef(this.lang, <one.MethodReference> callExpr.method);
+        const mutates = method && method.mutates;
+        
+        this.visitExpression(callExpr.method, mutates);
         for (const arg of callExpr.arguments)
             this.visitExpression(arg, false);
     }
