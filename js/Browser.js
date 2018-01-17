@@ -19,15 +19,13 @@
     const qs = {};
     location.search.substr(1).split('&').map(x => x.split('=')).forEach(x => qs[x[0]] = x[1]);
     const localhost = location.hostname === "127.0.0.1" || location.hostname === "localhost";
-    const serverhost = qs["server"] || (localhost && "127.0.0.1");
-    const httpsMode = serverhost.startsWith("https://");
+    const serverhost = "server" in qs ? qs["server"] : (localhost && "127.0.0.1");
+    const httpsMode = serverhost && serverhost.startsWith("https://");
     async function downloadTextFile(url) {
         const response = await (await fetch(url)).text();
         return response;
     }
     async function runLang(langConfig, code) {
-        if (!serverhost)
-            throw new Error("No compilation backend!");
         if (code) {
             langConfig.request.code = code;
             langConfig.request.stdlibCode = layout.langs[langConfig.name].stdLibHandler.getContent();
@@ -44,12 +42,6 @@
         if (responseJson.exceptionText)
             console.log(langConfig.name, "Exception", responseJson.exceptionText);
         return responseJson;
-    }
-    async function runLangTests() {
-        let langsToRun = Object.values(LangConfigs_1.langConfigs);
-        //langsToRun = ["java", "javascript", "typescript", "ruby", "php", "perl"];
-        for (const lang of langsToRun)
-            runLang(lang);
     }
     const layout = new AppLayout_1.Layout(["typescript" /*, "csharp"*/]);
     function escapeHtml(unsafe) {
@@ -112,6 +104,10 @@
         try {
             const langConfig = LangConfigs_1.langConfigs[langName];
             const code = codeCallback();
+            if (!serverhost) {
+                html `<span class="label error">error</span><a class="compilerMissing" href="https://github.com/koczkatamas/onelang/wiki/Compiler-backend" target="_blank">Compiler backend is missing!</a>`(langUi.statusBar);
+                return;
+            }
             const respJson = await runLang(langConfig, code);
             if (respJson.exceptionText) {
                 langUi.statusBar.attr("title", respJson.exceptionText);
@@ -128,7 +124,7 @@
             }
         }
         catch (e) {
-            html `<span class="result">${e}</span>`(langUi.statusBar);
+            html `<span class="label error">error</span>${e}`(langUi.statusBar);
             //langUi.changeHandler.setContent(`${e}`);
         }
     }
@@ -211,14 +207,11 @@
             });
         }
     }
-    //runLangTests();
     async function setupTestProgram() {
         const testPrg = await downloadTextFile(`input/${testPrgName}.ts`);
         layout.langs["typescript"].changeHandler.setContent(testPrg.replace(/\r\n/g, '\n'), true);
     }
     async function main() {
-        //runLangTests();
-        //runLang(langConfigs.ruby);
         initLayout();
         await compileHelper.init();
         await setupTestProgram();
