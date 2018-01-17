@@ -15,12 +15,12 @@
     const OneCompiler_1 = require("./OneCompiler");
     const OverviewGenerator_1 = require("./One/OverviewGenerator");
     const AstHelper_1 = require("./One/AstHelper");
-    const testPrgName = "InheritanceTest";
     const qs = {};
     location.search.substr(1).split('&').map(x => x.split('=')).forEach(x => qs[x[0]] = x[1]);
     const localhost = location.hostname === "127.0.0.1" || location.hostname === "localhost";
     const serverhost = "server" in qs ? qs["server"] : (localhost && "127.0.0.1");
     const httpsMode = serverhost && serverhost.startsWith("https://");
+    const testPrgName = qs["input"] || "InheritanceTest";
     async function downloadTextFile(url) {
         const response = await (await fetch(url)).text();
         return response;
