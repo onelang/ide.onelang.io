@@ -5,8 +5,6 @@ class TestClass {
         let mutableArr = [1];
         mutableArr.push(2);
 
-        mutableArr.push(1|2);
-
         console.log(`len1: ${constantArr.length}, len2: ${mutableArr.length}`);
     }
 }

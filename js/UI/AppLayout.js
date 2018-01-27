@@ -36,7 +36,7 @@
                     langUi.statusBar = parent.find('.statusBar');
                     langUi.editor = LayoutHelper.setupEditor(langUi.editorComponent, aceLang || langName, parent.find('.aceEditor').get(0));
                     langUi.changeHandler = new EditorChangeHandler(langUi.editor, 500, (newContent, userChange) => {
-                        if (userChange)
+                        if (userChange && this.onEditorChange)
                             this.onEditorChange(langName, newContent);
                     });
                     if (!isTs)
