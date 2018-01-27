@@ -37,7 +37,7 @@ classes:
       print:
         template: "print({{str}})"
   OneArray:
-    type: "[{{typeArgs[0]}}]"
+    type: "[{{genType(typeArguments[0])}}]"
     fields:
       length:
         template: "{{self}}!.count"
@@ -50,7 +50,7 @@ classes:
       set:
         template: "{{self}}![{{index}}] = {{value}}"
   OneMap:
-    type: "[{{typeArgs[0]}}: {{typeArgs[1]}}]"
+    type: "[{{genType(typeArguments[0])}}: {{genType(typeArguments[1])}}]"
     methods:
       keys:
         template: "Array({{self}}!.keys)"
@@ -64,6 +64,7 @@ classes:
       get:
         template: "{{self}}![{{key}}]!"
       set:
+        mutates: true
         template: "{{self}}![{{key}}] = {{value}}"
   OneFile:
     methods:
@@ -188,7 +189,7 @@ templates:
       - name: method
     template: |-
       {{for param in method.parameters|sep=", "}}
-        {{param.name}}: {{param.type}}
+        {{param.name}}: {{genType(param.typeInfo)}}
       {{/for}}
   genParams:
     args:
@@ -211,7 +212,7 @@ templates:
   unwrap:
     args:
       - name: expr
-    template: "{{if expr.valueType.canBeNull && expr.exprKind != 'ThisReference'}}!{{/if}}"
+    template: "{{gen(expr)}}{{if expr.valueType.canBeNull && expr.exprKind != 'ThisReference'}}!{{/if}}"
   genType:
     args:
       - name: type
@@ -251,12 +252,12 @@ expressions:
     ]
   expressionStatement: "{{if !expr.expression.valueType.isVoid and expr.expression.exprKind == 'Call'}}_ = {{/if}}{{gen(expr.expression)}}"
   instanceMethod: |-
-    {{gen(expr.thisExpr)}}{{unwrap(expr.thisExpr)}}.{{expr.methodRef.outName}}
+    {{unwrap(expr.thisExpr)}}.{{expr.methodRef.outName}}
   staticMethod: "{{expr.methodRef.classRef.outName}}.{{expr.methodRef.outName}}"
   localVar: "{{expr.varRef.outName}}"
   methodArgument: "{{expr.varRef.outName}}"
   instanceField: |-
-    {{gen(expr.thisExpr)}}{{unwrap(expr.thisExpr)}}.{{expr.varRef.outName}}
+    {{unwrap(expr.thisExpr)}}.{{expr.varRef.outName}}
   staticField: |-
     {{gen(expr.thisExpr)}}.{{expr.varRef.outName}}
   falseLiteral: "false"
@@ -271,12 +272,12 @@ expressions:
       {{if part.literal|inline}}
         {{part.text}}
       {{else}}
-        \({{gen(part.expr)}}{{unwrap(part.expr)}})
+        \({{unwrap(part.expr)}})
       {{/if}}
     {{/for}}
     "
   foreach: |-
-    for {{expr.itemVariable.outName}} in {{gen(expr.items)}} {
+    for {{expr.itemVariable.outName}} in {{unwrap(expr.items)}} {
         {{genBody(expr.body)}}
     }
   for: |-

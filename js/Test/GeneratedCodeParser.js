@@ -30,7 +30,6 @@
     };
     let langsToTest = Object.keys(langs);
     langsToTest = ["ruby"];
-    //prgNames = ["HelloWorld"];
     //prgExcludeList = [...prgExcludeList, "OneLang2", "StrReplaceTest"]
     for (const langName of langsToTest) {
         const langData = langs[langName];

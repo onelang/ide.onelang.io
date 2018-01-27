@@ -60,7 +60,7 @@
         log(data) { console.log(`[CodeGeneratorModel] ${data}`); }
         typeName(type) {
             const cls = this.generator.classGenerators[type.className];
-            const result = cls ? this.generator.call(cls.typeGenerator, [type.typeArguments.map(x => this.typeName(x))]) : this.generator.getTypeName(type);
+            const result = cls ? this.generator.call(cls.typeGenerator, [type.typeArguments.map(x => this.typeName(x)), type.typeArguments]) : this.generator.getTypeName(type);
             return result;
         }
         isIfBlock(block) {
@@ -289,7 +289,7 @@
             if (type.isClassOrInterface) {
                 const classGen = this.model.generator.classGenerators[type.className];
                 if (classGen) {
-                    return this.call(classGen.typeGenerator, [type.typeArguments.map(x => this.getTypeName(x))])
+                    return this.call(classGen.typeGenerator, [type.typeArguments.map(x => this.getTypeName(x)), type.typeArguments])
                         .map(x => x.text).join("");
                 }
                 else {
@@ -443,7 +443,7 @@
             for (const clsName of Object.keys(this.lang.classes || {})) {
                 const cls = this.lang.classes[clsName];
                 const clsGen = this.classGenerators[clsName] = {
-                    typeGenerator: new TemplateGenerator_1.TemplateMethod("typeGenerator", ["typeArgs"], cls.type || clsName),
+                    typeGenerator: new TemplateGenerator_1.TemplateMethod("typeGenerator", ["typeArgs", "typeArguments"], cls.type || clsName),
                     methods: {},
                     fields: {},
                 };

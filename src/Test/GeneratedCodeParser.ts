@@ -25,9 +25,7 @@ const langs: { [langName: string]: { ext: string, parse: (src: string) => ast.Sc
 };
 
 let langsToTest = Object.keys(langs);
-
 langsToTest = ["ruby"];
-//prgNames = ["HelloWorld"];
 
 //prgExcludeList = [...prgExcludeList, "OneLang2", "StrReplaceTest"]
 
