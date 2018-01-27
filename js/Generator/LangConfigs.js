@@ -12,7 +12,6 @@
     const Utils_1 = require("./Utils");
     exports.langConfigs = {
         cpp: {
-            port: 8000,
             stdlibFn: "one.hpp",
             request: {
                 lang: "CPP",
@@ -35,7 +34,6 @@
             }
         },
         csharp: {
-            port: 8000,
             stdlibFn: "one.cs",
             request: {
                 lang: "CSharp",
@@ -60,7 +58,6 @@
             }
         },
         go: {
-            port: 8000,
             stdlibFn: "one.go",
             request: {
                 lang: "Go",
@@ -83,10 +80,9 @@
             }
         },
         java: {
-            port: 8001,
             stdlibFn: "one.java",
-            httpsEndpoint: "java",
             request: {
+                lang: "Java",
                 code: Utils_1.deindent(`
                 public class TestClass {
                     public String testMethod() {
@@ -98,10 +94,9 @@
             }
         },
         javascript: {
-            port: 8002,
             stdlibFn: "one.js",
-            httpsEndpoint: "javascript",
             request: {
+                lang: "JavaScript",
                 code: Utils_1.deindent(`
                 class TestClass {
                     testMethod() {
@@ -115,7 +110,6 @@
             },
         },
         perl: {
-            port: 8000,
             stdlibFn: "one.pl",
             request: {
                 lang: "Perl",
@@ -142,9 +136,7 @@
             }
         },
         php: {
-            port: 8003,
             stdlibFn: "one.php",
-            httpsEndpoint: "php",
             request: {
                 lang: "PHP",
                 code: Utils_1.deindent(`
@@ -160,9 +152,7 @@
             }
         },
         python: {
-            port: 8004,
             stdlibFn: "one.py",
-            httpsEndpoint: "python",
             request: {
                 lang: "Python",
                 className: 'TestClass',
@@ -174,9 +164,7 @@
             }
         },
         ruby: {
-            port: 8005,
             stdlibFn: "one.rb",
-            httpsEndpoint: "ruby",
             request: {
                 lang: "Ruby",
                 className: 'TestClass',
@@ -190,7 +178,6 @@
             }
         },
         swift: {
-            port: 8000,
             stdlibFn: "one.swift",
             request: {
                 lang: "Swift",
@@ -205,9 +192,7 @@
             }
         },
         typescript: {
-            port: 8002,
             stdlibFn: "one.ts",
-            httpsEndpoint: "javascript",
             request: {
                 lang: "TypeScript",
                 className: 'TestClass',

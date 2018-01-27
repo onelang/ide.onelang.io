@@ -55,7 +55,7 @@
             var promises = langs.map(async (lang) => {
                 if (langFilter && lang.name !== langFilter)
                     return true;
-                const result = await NodeUtils_1.jsonRequest(`http://127.0.0.1:${lang.port}/compile`, lang.request);
+                const result = await NodeUtils_1.jsonRequest(`http://127.0.0.1:8000/compile`, lang.request);
                 console.log(`${lang.name}: ${JSON.stringify(result.result || result.exceptionText || "?")}`);
                 return true;
             });

@@ -17,27 +17,36 @@
     const AstHelper_1 = require("./One/AstHelper");
     const qs = {};
     location.search.substr(1).split('&').map(x => x.split('=')).forEach(x => qs[x[0]] = x[1]);
-    const localhost = location.hostname === "127.0.0.1" || location.hostname === "localhost";
-    const serverhost = "server" in qs ? qs["server"] : (localhost && "127.0.0.1");
-    const httpsMode = serverhost && serverhost.startsWith("https://");
-    const testPrgName = qs["input"] || "InheritanceTest";
+    const serverhost = "server" in qs ? qs["server"] : "http://127.0.0.1:8000";
+    const testPrgName = qs["input"] || "HelloWorld";
     async function downloadTextFile(url) {
         const response = await (await fetch(url)).text();
         return response;
+    }
+    let authTokenPromise;
+    async function apiCall(endpoint, request = null) {
+        let authToken = await authTokenPromise;
+        if (authToken) {
+            localStorage[`authToken[${serverhost}]`] = authToken;
+        }
+        else {
+            authToken = localStorage[`authToken[${serverhost}]`];
+        }
+        const response = await fetch(`${serverhost}/${endpoint}`, {
+            method: 'post',
+            mode: 'cors',
+            body: request ? JSON.stringify(request) : null,
+            headers: new Headers(authToken ? { 'Authentication': `Token ${authToken}` } : {})
+        });
+        const responseObj = await response.json();
+        return responseObj;
     }
     async function runLang(langConfig, code) {
         if (code) {
             langConfig.request.code = code;
             langConfig.request.stdlibCode = layout.langs[langConfig.name].stdLibHandler.getContent();
         }
-        const endpoint = httpsMode ? `${serverhost}/${langConfig.httpsEndpoint || "compile"}` :
-            `http://${serverhost}:${langConfig.port}/compile`;
-        const response = await fetch(endpoint, {
-            method: 'post',
-            mode: 'cors',
-            body: JSON.stringify(langConfig.request)
-        });
-        const responseJson = await response.json();
+        const responseJson = await apiCall("compile", langConfig.request);
         console.log(langConfig.name, responseJson);
         if (responseJson.exceptionText)
             console.log(langConfig.name, "Exception", responseJson.exceptionText);
@@ -105,7 +114,7 @@
             const langConfig = LangConfigs_1.langConfigs[langName];
             const code = codeCallback();
             if (!serverhost) {
-                html `<span class="label error">error</span><a class="compilerMissing" href="https://github.com/koczkatamas/onelang/wiki/Compiler-backend" target="_blank">Compiler backend is missing!</a>`(langUi.statusBar);
+                html `<span class="label error">error</span><a class="compilerMissing" href="https://github.com/koczkatamas/onelang/wiki/Compiler-backend" target="_blank">Compiler backend is not configured</a>`(langUi.statusBar);
                 return;
             }
             const respJson = await runLang(langConfig, code);
@@ -211,8 +220,22 @@
         const testPrg = await downloadTextFile(`input/${testPrgName}.ts`);
         layout.langs["typescript"].changeHandler.setContent(testPrg.replace(/\r\n/g, '\n'), true);
     }
+    async function backendInit() {
+        const statusResponse = await apiCall("status");
+        if (statusResponse.errorCode === "invalid_token") {
+            return new Promise((resolve, reject) => {
+                $("#authTokenModal").modal().on('hide.bs.modal', () => {
+                    resolve($("#authToken").val().trim());
+                });
+            });
+        }
+        else {
+            return null;
+        }
+    }
     async function main() {
         initLayout();
+        authTokenPromise = backendInit();
         await compileHelper.init();
         await setupTestProgram();
     }

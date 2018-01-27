@@ -3,9 +3,7 @@ import { deindent } from "./Utils";
 
 export interface LangConfig {
     name?: string;
-    port: number;
     stdlibFn: string;
-    httpsEndpoint?: string;
     request: {
         lang?: string;
         code: string;
@@ -20,7 +18,6 @@ export type LangConfigs = { [name: string]: LangConfig };
 
 export const langConfigs: LangConfigs = {
     cpp: {
-        port: 8000,
         stdlibFn: "one.hpp",
         request: {
             lang: "CPP",
@@ -43,7 +40,6 @@ export const langConfigs: LangConfigs = {
         }
     },
     csharp: {
-        port: 8000,
         stdlibFn: "one.cs",
         request: {
             lang: "CSharp",
@@ -68,7 +64,6 @@ export const langConfigs: LangConfigs = {
         }
     },
     go: {
-        port: 8000,
         stdlibFn: "one.go",
         request: {
             lang: "Go",
@@ -91,10 +86,9 @@ export const langConfigs: LangConfigs = {
         }
     },
     java: {
-        port: 8001,
         stdlibFn: "one.java",
-        httpsEndpoint: "java",
         request: {
+            lang: "Java",
             code: deindent(`
                 public class TestClass {
                     public String testMethod() {
@@ -106,10 +100,9 @@ export const langConfigs: LangConfigs = {
         }
     },
     javascript: {
-        port: 8002,
         stdlibFn: "one.js",
-        httpsEndpoint: "javascript",
         request: {
+            lang: "JavaScript",
             code: deindent(`
                 class TestClass {
                     testMethod() {
@@ -123,7 +116,6 @@ export const langConfigs: LangConfigs = {
         },
     },
     perl: {
-        port: 8000,
         stdlibFn: "one.pl",
         request: {
             lang: "Perl",
@@ -150,9 +142,7 @@ export const langConfigs: LangConfigs = {
         }
     },
     php: {
-        port: 8003,
         stdlibFn: "one.php",
-        httpsEndpoint: "php",
         request: {
             lang: "PHP",
             code: deindent(`
@@ -168,9 +158,7 @@ export const langConfigs: LangConfigs = {
         }
     },
     python: {
-        port: 8004,
         stdlibFn: "one.py",
-        httpsEndpoint: "python",
         request: {
             lang: "Python",
             className: 'TestClass',
@@ -182,9 +170,7 @@ export const langConfigs: LangConfigs = {
         }
     },
     ruby: {
-        port: 8005,
         stdlibFn: "one.rb",
-        httpsEndpoint: "ruby",
         request: {
             lang: "Ruby",
             className: 'TestClass',
@@ -198,7 +184,6 @@ export const langConfigs: LangConfigs = {
         }
     },
     swift: {
-        port: 8000,
         stdlibFn: "one.swift",
         request: {
             lang: "Swift",
@@ -213,9 +198,7 @@ export const langConfigs: LangConfigs = {
         }
     },
     typescript: {
-        port: 8002,
         stdlibFn: "one.ts",
-        httpsEndpoint: "javascript",
         request: {
             lang: "TypeScript",
             className: 'TestClass',
