@@ -177,7 +177,7 @@
             { name: "product", operators: ['*', '/'], binary: true },
             { name: "bitwise", operators: ['|', '&', '^'], binary: true },
             { name: "exponent", operators: ['**'], binary: true },
-            { name: "shift", operators: ['<<'], binary: true },
+            { name: "shift", operators: ['<<', '>>'], binary: true },
             { name: "range", operators: ['...'], binary: true },
             { name: "prefix" },
             { name: "postfix", operators: ['++', '--'] },
