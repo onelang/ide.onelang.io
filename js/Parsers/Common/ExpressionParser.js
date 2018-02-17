@@ -4,11 +4,12 @@
         if (v !== undefined) module.exports = v;
     }
     else if (typeof define === "function" && define.amd) {
-        define(["require", "exports"], factory);
+        define(["require", "exports", "../../One/Ast"], factory);
     }
 })(function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
+    const Ast_1 = require("../../One/Ast");
     class Operator {
         constructor(text, precedence, isBinary, isRightAssoc, isPostfix) {
             this.text = text;
@@ -19,14 +20,42 @@
         }
     }
     class ExpressionParser {
-        constructor(reader, nodeManager = null) {
+        constructor(reader, nodeManager = null, config = ExpressionParser.defaultConfig()) {
             this.reader = reader;
             this.nodeManager = nodeManager;
+            this.config = config;
             this.unaryPrehook = null;
-            this.config = JSON.parse(JSON.stringify(ExpressionParser.defaultConfig));
+            this.infixPrehook = null;
             this.reconfigure();
         }
+        static defaultConfig() {
+            return {
+                unary: ['!', 'not', '+', '-', '~'],
+                precedenceLevels: [
+                    { name: "assignment", operators: ['=', '+=', '-=', '*=', '/=', '<<=', '>>='], binary: true },
+                    { name: "conditional", operators: ['?'] },
+                    { name: "or", operators: ['||', 'or'], binary: true },
+                    { name: "and", operators: ['&&', 'and'], binary: true },
+                    { name: "comparison", operators: ['>=', '!=', '===', '!==', '==', '<=', '>', '<'], binary: true },
+                    { name: "sum", operators: ['+', '-'], binary: true },
+                    { name: "product", operators: ['*', '/'], binary: true },
+                    { name: "bitwise", operators: ['|', '&', '^'], binary: true },
+                    { name: "exponent", operators: ['**'], binary: true },
+                    { name: "shift", operators: ['<<', '>>'], binary: true },
+                    { name: "range", operators: ['...'], binary: true },
+                    { name: "prefix" },
+                    { name: "postfix", operators: ['++', '--'] },
+                    { name: "call", operators: ['('] },
+                    { name: "propertyAccess", operators: [] },
+                    { name: "elementAccess", operators: ['['] },
+                ],
+                rightAssoc: ['**'],
+                aliases: { "===": "==", "!==": "!=", "not": "!", "and": "&&", "or": "||" },
+                propertyAccessOps: [".", "::"],
+            };
+        }
         reconfigure() {
+            this.config.precedenceLevels.find(x => x.name === "propertyAccess").operators = this.config.propertyAccessOps;
             this.operatorMap = {};
             for (let i = 0; i < this.config.precedenceLevels.length; i++) {
                 const level = this.config.precedenceLevels[i];
@@ -42,12 +71,12 @@
             }
             this.operators = Object.keys(this.operatorMap).sort((a, b) => b.length - a.length);
         }
-        parseMapLiteral(keySeparator = ":") {
-            if (!this.reader.readToken("{"))
+        parseMapLiteral(keySeparator = ":", startToken = "{", endToken = "}") {
+            if (!this.reader.readToken(startToken))
                 return null;
             const mapLiteral = { exprKind: "MapLiteral", properties: [] };
             do {
-                if (this.reader.peekToken("}"))
+                if (this.reader.peekToken(endToken))
                     break;
                 const item = {};
                 mapLiteral.properties.push(item);
@@ -57,23 +86,23 @@
                 this.reader.expectToken(keySeparator);
                 item.initializer = this.parse();
             } while (this.reader.readToken(","));
-            this.reader.expectToken("}");
+            this.reader.expectToken(endToken);
             return mapLiteral;
         }
-        parseArrayLiteral() {
-            if (!this.reader.readToken("["))
+        parseArrayLiteral(startToken = "[", endToken = "]") {
+            if (!this.reader.readToken(startToken))
                 return null;
             const arrayLiteral = { exprKind: "ArrayLiteral", items: [] };
-            if (!this.reader.readToken("]")) {
+            if (!this.reader.readToken(endToken)) {
                 do {
                     const item = this.parse();
                     arrayLiteral.items.push(item);
                 } while (this.reader.readToken(","));
-                this.reader.expectToken("]");
+                this.reader.expectToken(endToken);
             }
             return arrayLiteral;
         }
-        parseLeft() {
+        parseLeft(required = true) {
             const result = this.unaryPrehook && this.unaryPrehook();
             if (result !== null)
                 return result;
@@ -96,7 +125,10 @@
                 this.reader.expectToken(")");
                 return { exprKind: "Parenthesized", expression: expr };
             }
-            this.reader.fail(`unknown (literal / unary) token in expression`);
+            if (required)
+                this.reader.fail(`unknown (literal / unary) token in expression`);
+            else
+                return null;
         }
         parseOperator() {
             let op = null;
@@ -120,12 +152,22 @@
             if (this.nodeManager !== null)
                 this.nodeManager.addNode(node, start);
         }
-        parse(precedence = 0) {
+        parse(precedence = 0, required = true) {
             this.reader.skipWhitespace();
             const leftStart = this.reader.offset;
-            let left = this.parseLeft();
+            let left = this.parseLeft(required);
+            if (!left)
+                return null;
             this.addNode(left, leftStart);
             while (true) {
+                if (this.infixPrehook) {
+                    const parsed = this.infixPrehook(left);
+                    if (parsed) {
+                        left = parsed;
+                        this.addNode(left, leftStart);
+                        continue;
+                    }
+                }
                 const op = this.parseOperator();
                 if (op === null || op.precedence <= precedence)
                     break;
@@ -153,7 +195,7 @@
                     this.reader.expectToken("]");
                     left = { exprKind: "ElementAccess", object: left, elementExpr };
                 }
-                else if (op.text === "." || op.text === "::") {
+                else if (this.config.propertyAccessOps.includes(op.text)) {
                     const prop = this.reader.expectIdentifier("expected identifier as property name");
                     left = { exprKind: "PropertyAccess", object: left, propertyName: prop };
                 }
@@ -162,31 +204,21 @@
                 }
                 this.addNode(left, leftStart);
             }
+            if (left.exprKind === Ast_1.OneAst.ExpressionKind.Parenthesized) {
+                const paren = left;
+                if (paren.expression.exprKind === Ast_1.OneAst.ExpressionKind.Identifier) {
+                    const expr = this.parse(0, false);
+                    if (expr !== null) {
+                        return { exprKind: "Cast",
+                            newType: Ast_1.OneAst.Type.Class(paren.expression.text),
+                            expression: expr
+                        };
+                    }
+                }
+            }
             return left;
         }
     }
-    ExpressionParser.defaultConfig = {
-        unary: ['!', 'not', '+', '-', '~'],
-        precedenceLevels: [
-            { name: "assignment", operators: ['=', '+=', '-=', '*=', '/=', '<<=', '>>='], binary: true },
-            { name: "conditional", operators: ['?'] },
-            { name: "or", operators: ['||', 'or'], binary: true },
-            { name: "and", operators: ['&&', 'and'], binary: true },
-            { name: "comparison", operators: ['>=', '!=', '===', '!==', '==', '<=', '>', '<'], binary: true },
-            { name: "sum", operators: ['+', '-'], binary: true },
-            { name: "product", operators: ['*', '/'], binary: true },
-            { name: "bitwise", operators: ['|', '&', '^'], binary: true },
-            { name: "exponent", operators: ['**'], binary: true },
-            { name: "shift", operators: ['<<', '>>'], binary: true },
-            { name: "range", operators: ['...'], binary: true },
-            { name: "prefix" },
-            { name: "postfix", operators: ['++', '--'] },
-            { name: "call", operators: ['('] },
-            { name: "propertyAccess", operators: ['.', '::', '['] },
-        ],
-        rightAssoc: ['**'],
-        aliases: { "===": "==", "!==": "!=", "not": "!", "and": "&&", "or": "||" },
-    };
     exports.ExpressionParser = ExpressionParser;
 });
 //# sourceMappingURL=ExpressionParser.js.map

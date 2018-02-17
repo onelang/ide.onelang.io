@@ -4,7 +4,7 @@
         if (v !== undefined) module.exports = v;
     }
     else if (typeof define === "function" && define.amd) {
-        define(["require", "exports", "./Parsers/TypeScriptParser2", "./One/SchemaTransformer", "./One/Transforms/FillNameTransform", "./One/Transforms/FillParentTransform", "./One/Transforms/FillMetaPathTransform", "./One/Transforms/ResolveIdentifiersTransform", "./One/Transforms/InferTypesTransform", "./One/Transforms/InlineOverlayTypesTransform", "./One/Transforms/ConvertInlineThisRefTransform", "./One/Transforms/InferCharacterTypes", "./One/SchemaContext", "./One/OverviewGenerator", "./One/AstHelper", "./One/Transforms/CaseConverter", "./Generator/CodeGenerator", "./One/Transforms/FillVariableMutability", "./One/Transforms/TriviaCommentTransform", "./One/Transforms/GenericTransformer", "./One/Transforms/FillThrowsTransform", "./One/Transforms/RemoveEmptyTemplateStringLiterals", "./One/Transforms/FixGenericAndEnumTypes", "./Parsers/CSharpParser", "./Parsers/RubyParser", "./One/Transforms/ExtractCommentAttributes"], factory);
+        define(["require", "exports", "./Parsers/TypeScriptParser2", "./One/SchemaTransformer", "./One/Transforms/FillNameTransform", "./One/Transforms/FillParentTransform", "./One/Transforms/FillMetaPathTransform", "./One/Transforms/ResolveIdentifiersTransform", "./One/Transforms/InferTypesTransform", "./One/Transforms/InlineOverlayTypesTransform", "./One/Transforms/ConvertInlineThisRefTransform", "./One/Transforms/InferCharacterTypes", "./One/SchemaContext", "./One/OverviewGenerator", "./One/AstHelper", "./One/Transforms/CaseConverter", "./Generator/CodeGenerator", "./One/Transforms/FillVariableMutability", "./One/Transforms/TriviaCommentTransform", "./One/Transforms/GenericTransformer", "./One/Transforms/FillThrowsTransform", "./One/Transforms/RemoveEmptyTemplateStringLiterals", "./One/Transforms/FixGenericAndEnumTypes", "./Parsers/CSharpParser", "./Parsers/RubyParser", "./One/Transforms/ExtractCommentAttributes", "./Parsers/PhpParser", "./One/Transforms/ForceTemplateStrings", "./One/Transforms/WhileToFor", "./One/Transforms/ProcessTypeHints"], factory);
     }
 })(function (require, exports) {
     "use strict";
@@ -33,6 +33,10 @@
     const CSharpParser_1 = require("./Parsers/CSharpParser");
     const RubyParser_1 = require("./Parsers/RubyParser");
     const ExtractCommentAttributes_1 = require("./One/Transforms/ExtractCommentAttributes");
+    const PhpParser_1 = require("./Parsers/PhpParser");
+    const ForceTemplateStrings_1 = require("./One/Transforms/ForceTemplateStrings");
+    const WhileToFor_1 = require("./One/Transforms/WhileToFor");
+    const ProcessTypeHints_1 = require("./One/Transforms/ProcessTypeHints");
     SchemaTransformer_1.SchemaTransformer.instance.addTransform(new FillNameTransform_1.FillNameTransform());
     SchemaTransformer_1.SchemaTransformer.instance.addTransform(new FillParentTransform_1.FillParentTransform());
     SchemaTransformer_1.SchemaTransformer.instance.addTransform(new FillMetaPathTransform_1.FillMetaPathTransform());
@@ -60,13 +64,16 @@
             else if (langName === "ruby") {
                 this.parser = new RubyParser_1.RubyParser(programCode);
             }
+            else if (langName === "php") {
+                this.parser = new PhpParser_1.PhpParser(programCode);
+            }
             else {
                 throw new Error(`[OneCompiler] Unsupported language: ${langName}`);
             }
             const schema = this.parser.parse();
             const overlaySchema = TypeScriptParser2_1.TypeScriptParser2.parseFile(overlayCode);
             const stdlibSchema = TypeScriptParser2_1.TypeScriptParser2.parseFile(stdlibCode);
-            this.genericTransformer = new GenericTransformer_1.GenericTransformer(YAML.parse(genericTransformerYaml));
+            this.genericTransformer = new GenericTransformer_1.GenericTransformer(YAML.parse(genericTransformerYaml), schema.langData.langId);
             // TODO: hack
             overlaySchema.classes[this.parser.langData.literalClassNames.array].meta = { iterable: true };
             stdlibSchema.classes["OneArray"].meta = { iterable: true };
@@ -127,13 +134,27 @@
             new InferTypesTransform_1.InferTypesTransform(this.schemaCtx).transform();
             this.schemaCtx.ensureTransforms("inferCharacterTypes");
             this.saveSchemaState(this.schemaCtx, `5_TypesInferredAgain`);
+            if (!this.schemaCtx.schema.langData.supportsTemplateStrings)
+                new ForceTemplateStrings_1.ForceTemplateStrings().transform(this.schemaCtx);
+            if (!this.schemaCtx.schema.langData.supportsFor)
+                new WhileToFor_1.WhileToForTransform().transform(this.schemaCtx);
+            new ProcessTypeHints_1.ProcessTypeHints().transform(this.schemaCtx);
+            this.saveSchemaState(this.schemaCtx, `6_PostProcess`);
         }
         preprocessLangFile(lang) {
             for (const opDesc of Object.keys(lang.operators || {})) {
-                const opData = lang.operators[opDesc];
+                let opData = lang.operators[opDesc];
+                if (typeof opData === "string")
+                    opData = lang.operators[opDesc] = { template: opData };
                 const opDescParts = opDesc.split(" ").filter(x => x !== "");
                 if (opDescParts.length === 3)
                     [opData.leftType, opData.operator, opData.rightType] = opDescParts;
+            }
+            for (const classDesc of Object.values(lang.classes || {})) {
+                for (const methodName of Object.keys(classDesc.methods || {})) {
+                    if (typeof classDesc.methods[methodName] === "string")
+                        classDesc.methods[methodName] = { template: classDesc.methods[methodName] };
+                }
             }
         }
         getCodeGenerator(langCode, langName) {
@@ -148,8 +169,9 @@
             const codeGen = new CodeGenerator_1.CodeGenerator(this.schemaCtx.schema, this.stdlibCtx.schema, lang);
             return codeGen;
         }
-        compile(langCode, langName, callTestMethod = true) {
+        compile(langCode, langName, callTestMethod = true, genMeta = false) {
             const codeGen = this.getCodeGenerator(langCode, langName);
+            codeGen.model.config.genMeta = genMeta;
             const generatedCode = codeGen.generate(callTestMethod);
             return generatedCode;
         }

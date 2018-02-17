@@ -23,7 +23,7 @@ export class TemplateMethod {
     body: Ast.Block;
 
     constructor(public name: string, public args: string[], public template: string) {
-        this.body = TemplateParser.parse(template);
+        this.body = TemplateParser.parse(template.replace(/\\#/g, "#"));
     }
 
     static fromSignature(signature: string, template: string) {
@@ -57,6 +57,7 @@ export class TemplateGenerator implements IMethodHandler {
     rootVars: VariableContext;
     methods = new VariableSource("TemplateGenerator methods");
     callStack: CallStackItem[] = [];
+    objectHook: (obj: object) => GeneratedNode[] = null;
 
     constructor(variables: VariableContext) {
         this.vm.methodHandler = this;
@@ -222,10 +223,15 @@ export class TemplateGenerator implements IMethodHandler {
 
     processTemplateNode(node: Ast.TemplateNode, vars: VariableContext): GeneratedNode[] {
         const result = this.vm.evaluate(node.expr, vars);
-        if (typeof(result) === "object")
+        if (result === null) {
+            return null;
+        } else if (Array.isArray(result)) {
             return <GeneratedNode[]> result;
-        const resNode = new GeneratedNode(result);
-        return [resNode];
+        } else if (typeof result === "object" && this.objectHook) {
+            return this.objectHook(result);
+        } else {
+            return [new GeneratedNode(result.toString())];
+        }
     }
 
     generateNode(node: Ast.Node, vars: VariableContext): GeneratedNode[] {

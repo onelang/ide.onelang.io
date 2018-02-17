@@ -33,7 +33,7 @@ classes:
         template: "{{self}}.length"
     methods:
       add:
-        template: "{{self}} << ({{item}})"
+        template: "{{self}} << {{genWithParen(item)}}"
       get:
         template: "{{self}}[{{index}}]"
       set:
@@ -66,11 +66,44 @@ classes:
   OneReflect:
     includes: ["one"]
     template: "One::Reflect"
+  OneBigInteger:
+    methods:
+      fromInt:
+        template: "{{value}}"
+  OneJson:
+    methods:
+      parse:
+        includes: [json]
+        template: "JSON.parse({{str}})"
+  OneJValue:
+    methods:
+      isObject: "{{self}}.is_a?(Hash)"
+      isArray: "{{self}}.is_a?(Array)"
+      isString: "{{self}}.is_a?(String)"
+      isNumber: "{{self}}.is_a?(Numeric)"
+      isBool: "({{self}} == true or {{self}} == false)"
+      isNull: "({{self}} == nil)"
+      asString: "{{self}}"
+      asNumber: "{{self}}"
+      asBool: "{{self}}"
+      asObject: "{{self}}"
+      getArrayItems: "{{self}}"
+  OneJObject:
+    methods:
+      getProperties: "{{self}}.keys"
+      get: "{{self}}[{{name}}]"
+  OneJProperty:
+    methods:
+      getName: "{{self}}"
+      getValue: "{{obj}}[{{self}}]"        
+  One:
+    methods:
+      langName: '"Ruby"'
 operators:
   OneString + OneNumber:
-    template: "{{gen(left)}} + ({{gen(right)}}).to_s"
+    template: "{{gen(left)}} + {{genWithParen(right)}}.to_s"
   OneString + OneBoolean:
-    template: "{{gen(left)}} + ({{gen(right)}}).to_s"
+    template: "{{gen(left)}} + {{genWithParen(right)}}.to_s"
 templates:
   testGenerator: |-
     begin
@@ -81,7 +114,7 @@ templates:
 
   main: |-
     {{for inc in includes|sep=\n}}
-      require '{{inc}}'
+      require '{{inc.name}}'
     {{/for}}
 
     {{for enum in enums|sep=\n\n}}
@@ -93,7 +126,7 @@ templates:
     {{/for}}
 
     {{for class in classes|sep=\n\n}}
-      class {{class.name}}{{if class.baseClass}} < {{class.baseClass}}{{/if}} 
+      class {{class.name}}{{if class.baseClass}} < {{class.baseClass}}{{/if}}
         {{for field in class.fields|sep=\n}}
           {{if field.static}}
             @{{field.name}} = {{if field.initializer}}{{gen(field.initializer)}}{{else}}nil{{/if}}
@@ -126,13 +159,20 @@ templates:
         {{/if}}
   
         {{for method in class.methods|sep=\n\n}}
+          {{if config.genMeta}}
+            \# @signature {{method.name}}(
+            {{for param in method.parameters|inline sep=", "}}
+              {{param.name}}: {{if param.typeInfo}}{{param.typeInfo.oneName}}{{else}}???{{/if}}
+            {{/for}}
+            ): {{if method.returnTypeInfo}}{{method.returnTypeInfo.oneName}}{{else}}???{{/if}}
+          {{/if}}
           def {{if method.static}}self.{{/if}}{{method.name}}({{genArgs(method)}})
               {{genBody(method.body)}}
           end
         {{/for}}
       end
 
-      {{if class.reflect}}
+      {{if class.attributes["reflect"]}}
         One::Reflect::setup_class(One::Class.new({{class.name}}, [
             {{for field in class.fields|sep=\n}}
               One::Field.new("{{field.name}}", {{field.static}}, "{{field.type}}"),
@@ -148,6 +188,8 @@ templates:
           ]));
       {{/if}}
     {{/for}}
+
+    {{genBody(mainBlock)}}
 
   genBody:
     args:
@@ -175,6 +217,14 @@ templates:
     args:
       - name: itemVar
     template: "{{itemVar.outName}} = {{gen(itemVar.initializer)}}"
+  genWithParen:
+    args: [{ name: expr }]
+    template: |-
+      {{if expr.exprKind == "Binary" or expr.exprKind == "Conditional"}}
+        ({{gen(expr)}})
+      {{else}}
+        {{gen(expr)}}
+      {{/if}}
 expressions:
   call: |-
     {{gen(expr.method)}}(
@@ -225,7 +275,7 @@ expressions:
     "
     {{for part in expr.parts|inline}}
       {{if part.literal|inline}}
-        {{part.text}}
+        {{escapeQuotes(part.text)}}
       {{else}}
         #{{{gen(part.expr)}}}
       {{/if}}

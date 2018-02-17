@@ -13,7 +13,7 @@ const qs = {};
 location.search.substr(1).split('&').map(x => x.split('=')).forEach(x => qs[x[0]] = x[1]);
 const serverhost: string = "server" in qs ? qs["server"] : "http://127.0.0.1:11111";
 
-const testPrgName = qs["input"] || "HelloWorld";
+const testPrgName = qs["input"] || "HelloWorldRaw";
 
 async function downloadTextFile(url: string): Promise<string> {
     const response = await (await fetch(url)).text();
@@ -42,11 +42,9 @@ async function apiCall<TResponse>(endpoint: string, request: object = null): Pro
     return <TResponse> responseObj;
 }
 
-async function runLang(langConfig: LangConfig, code?: string) {
-    if (code) {
-        langConfig.request.code = code;
-        langConfig.request.stdlibCode = layout.langs[langConfig.name].stdLibHandler.getContent();
-    }
+async function runLang(langConfig: LangConfig, code: string) {
+    langConfig.request.code = code;
+    langConfig.request.stdlibCode = layout.langs[langConfig.name].stdLibHandler.getContent();
     
     const responseJson = await apiCall<CompileResult>("compile", langConfig.request);
     console.log(langConfig.name, responseJson);
@@ -55,7 +53,7 @@ async function runLang(langConfig: LangConfig, code?: string) {
     return responseJson;
 }
 
-const layout = new Layout(["typescript"/*, "csharp"*/]);
+const layout = new Layout(qs["layout"]);
 
 function escapeHtml(unsafe) {
     return unsafe.toString()
@@ -98,6 +96,7 @@ class CompileHelper {
         tasks.push(this.setContent(layout.genericTransformsHandler, `langs/NativeResolvers/GenericTransforms.yaml`));
 
         for (const lang of Object.values(this.langConfigs)) {
+            if (!layout.langs[lang.name]) continue;
             tasks.push(this.setContent(layout.langs[lang.name].generatorHandler, `langs/${lang.name}.yaml`));
             tasks.push(this.setContent(layout.langs[lang.name].stdLibHandler, `langs/StdLibs/${lang.stdlibFn}`));
         }
@@ -120,12 +119,17 @@ class CompileHelper {
     compile(langName: string) {
         const lang = this.langConfigs[langName];
         const schemaYaml = layout.langs[langName].generatorHandler.getContent();
-        const code = this.compiler.compile(schemaYaml, langName, true);
+        const code = this.compiler.compile(schemaYaml, langName, true, layout.inputLangs.includes(langName));
         return code;
     }
 }
 
 const compileHelper = new CompileHelper(langConfigs);
+
+function statusBarError(langUi: LangUi, error: string) {
+    langUi.statusBar.attr("title", error);
+    html`<span class="label error">error</span>${error}`(langUi.statusBar);
+}
 
 async function runLangUi(langName: string, codeCallback: () => string) {
     const langUi = layout.langs[langName];
@@ -141,8 +145,7 @@ async function runLangUi(langName: string, codeCallback: () => string) {
 
         const respJson = await runLang(langConfig, code);
         if (respJson.exceptionText) {
-            langUi.statusBar.attr("title", respJson.exceptionText);
-            html`<span class="label error">error</span>${respJson.exceptionText}`(langUi.statusBar);
+            statusBarError(langUi, respJson.exceptionText);
         } else {
             let result = respJson.result;
             result = result === null ? "<null>" : result.toString();
@@ -154,7 +157,7 @@ async function runLangUi(langName: string, codeCallback: () => string) {
             return result;
         }
     } catch(e) {
-        html`<span class="label error">error</span>${e}`(langUi.statusBar);
+        statusBarError(langUi, e);
         //langUi.changeHandler.setContent(`${e}`);
     }
 }
@@ -193,7 +196,16 @@ async function editorChange(sourceLang: string, newContent: string) {
     markerManager.removeMarkers();
 
     if (layout.inputLangs.includes(sourceLang)) {
-        compileHelper.setProgram(newContent, sourceLang);
+        try {
+            compileHelper.setProgram(newContent, sourceLang);
+            const sourceLangUi = layout.langs[sourceLang];
+            sourceLangUi.astHandler.setContent(compileHelper.astOverview);
+            sourceLangUi.astJsonHandler.setContent(compileHelper.astJsonOverview);
+        } catch(e) {
+            statusBarError(layout.langs[sourceLang], e);
+            return;
+        }
+
         const sourceLangPromise = new ExposedPromise<string>();
         await Promise.all(Object.keys(layout.langs).map(async langName => {
             const langUi = layout.langs[langName];
@@ -201,20 +213,20 @@ async function editorChange(sourceLang: string, newContent: string) {
 
             const result = await runLangUi(langName, () => {
                 const code = compileHelper.compile(langName);
-                (isSourceLang ? langUi.generatedHandler : langUi.changeHandler).setContent(code);
-                if (isSourceLang) {
-                    langUi.astHandler.setContent(compileHelper.astOverview);
-                    langUi.astJsonHandler.setContent(compileHelper.astJsonOverview);
-                }
+                if (!isSourceLang)
+                    langUi.changeHandler.setContent(code);
+                langUi.generatedHandler.setContent(code);
                 return code;
             });
             
             if (isSourceLang)
                 sourceLangPromise.resolve(result);
 
-            const sourceLangResult = await sourceLangPromise;
-            const isMatch = result === sourceLangResult;
-            langUi.statusBar.find(".label").removeClass("success").addClass(isMatch ? "success" : "error");
+            if (result) {
+                const sourceLangResult = await sourceLangPromise;
+                const isMatch = result === sourceLangResult;
+                langUi.statusBar.find(".label").removeClass("success").addClass(isMatch ? "success" : "warning");
+            }
         }));
     } else {
         runLangUi(sourceLang, () => newContent);
@@ -247,7 +259,8 @@ function initLayout() {
             markerManager.addMarker(inputEditor, node.nodeData.sourceRange.start, node.nodeData.sourceRange.end, false);
             for (const langName of Object.keys(node.nodeData.destRanges)) {
                 const dstRange = node.nodeData.destRanges[langName];
-                markerManager.addMarker(layout.langs[langName].generatedHandler.editor, dstRange.start, dstRange.end, true);
+                if (langName !== inputLang)
+                    markerManager.addMarker(layout.langs[langName].changeHandler.editor, dstRange.start, dstRange.end, true);
             }
         });
     }

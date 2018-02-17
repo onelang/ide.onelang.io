@@ -4,7 +4,7 @@
         if (v !== undefined) module.exports = v;
     }
     else if (typeof define === "function" && define.amd) {
-        define(["require", "exports", "../Parsers/TypeScriptParser2", "../Parsers/CSharpParser", "../Utils/NodeUtils", "../One/AstHelper", "../OneCompiler", "../Parsers/RubyParser"], factory);
+        define(["require", "exports", "../Parsers/TypeScriptParser2", "../Parsers/CSharpParser", "../Utils/NodeUtils", "../One/AstHelper", "../OneCompiler", "../Parsers/RubyParser", "../Parsers/PhpParser"], factory);
     }
 })(function (require, exports) {
     "use strict";
@@ -15,6 +15,7 @@
     const AstHelper_1 = require("../One/AstHelper");
     const OneCompiler_1 = require("../OneCompiler");
     const RubyParser_1 = require("../Parsers/RubyParser");
+    const PhpParser_1 = require("../Parsers/PhpParser");
     require("../Utils/Extensions.js");
     const fs = require("fs");
     global["YAML"] = require('yamljs');
@@ -27,14 +28,18 @@
         typescript: { ext: "ts", parse: src => TypeScriptParser2_1.TypeScriptParser2.parseFile(src) },
         csharp: { ext: "cs", parse: src => CSharpParser_1.CSharpParser.parseFile(src) },
         ruby: { ext: "rb", parse: src => RubyParser_1.RubyParser.parseFile(src) },
+        php: { ext: "php", parse: src => PhpParser_1.PhpParser.parseFile(src) },
     };
     let langsToTest = Object.keys(langs);
-    langsToTest = ["ruby"];
+    langsToTest = ["php"];
+    const skipTests = { "php": ["JsonParseTest"] };
     //prgExcludeList = [...prgExcludeList, "OneLang2", "StrReplaceTest"]
     for (const langName of langsToTest) {
         const langData = langs[langName];
         const overlayCode = NodeUtils_1.readFile(`langs/NativeResolvers/${langName}.ts`);
         for (const prgName of prgNames) {
+            if (skipTests[langName].includes(prgName))
+                continue;
             const fn = `generated/${prgName}/results/${prgName}.${langData.ext}`;
             console.log(`Parsing '${fn}'...`);
             let content = NodeUtils_1.readFile(fn);

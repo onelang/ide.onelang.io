@@ -69,6 +69,8 @@
             let intfs = this.getInterfaces(className);
             if (intfs.length === 0)
                 intfs = this.getClassChain(className);
+            if (!intfs)
+                return null;
             for (const intf of intfs) {
                 const method = intf.methods[methodName];
                 if (method)
@@ -78,6 +80,8 @@
         }
         getFieldOrProp(className, fieldName) {
             const classChain = this.getClassChain(className);
+            if (!classChain)
+                return null;
             for (const cls of classChain) {
                 const fieldOrProp = cls.fields[fieldName] || cls.properties[fieldName];
                 if (fieldOrProp)
@@ -88,6 +92,8 @@
         findBaseClass(className1, className2) {
             const chain1 = this.getClassChain(className1);
             const chain2 = this.getClassChain(className2);
+            if (!chain1 || !chain2)
+                return null;
             const intfs1 = this.getInterfaces(...chain1.map(x => x.name)).filter(x => x.type.isInterface);
             const intfs2 = this.getInterfaces(...chain2.map(x => x.name)).filter(x => x.type.isInterface);
             for (const item1 of intfs1)
@@ -122,7 +128,10 @@
             const result = [];
             let currClass = className;
             while (currClass) {
-                const cls = this.getClass(currClass, currClass !== className);
+                const isOriginal = currClass === className;
+                const cls = this.getClass(currClass, isOriginal);
+                if (!cls && isOriginal)
+                    return null;
                 result.push(cls);
                 currClass = cls.baseClass;
             }

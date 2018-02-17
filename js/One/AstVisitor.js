@@ -300,6 +300,7 @@
                 this.visitInterface(intf, context);
             for (const cls of Object.values(schema.classes))
                 this.visitClass(cls, context);
+            this.visitBlock(schema.mainBlock, context);
         }
     }
     exports.AstVisitor = AstVisitor;

@@ -16,6 +16,7 @@
     class CSharpParser {
         constructor(source) {
             this.langData = {
+                langId: "csharp",
                 literalClassNames: {
                     string: "CsString",
                     boolean: "CsBoolean",
@@ -24,11 +25,13 @@
                     map: "CsMap",
                     array: "CsArray",
                 },
-                allowImplicitVariableDeclaration: false
+                allowImplicitVariableDeclaration: false,
+                supportsTemplateStrings: true,
+                supportsFor: true,
             };
             this.context = [];
             // TODO: less hacky way of removing test code?
-            source = source.split("\npublic class Program")[0];
+            source = source.replace(/\npublic class Program(\n|.)*new TestClass\(\).TestMethod(\n|.)*/, "");
             this.reader = new Reader_1.Reader(source);
             this.reader.errorCallback = error => {
                 throw new Error(`[CSharpParser] ${error.message} at ${error.cursor.line}:${error.cursor.column} (context: ${this.context.join("/")})\n${this.reader.linePreview}`);
@@ -48,10 +51,10 @@
             if (typeName === "string") {
                 type = Ast_1.OneAst.Type.Class("CsString");
             }
-            else if (typeName === "boolean") {
+            else if (typeName === "bool") {
                 type = Ast_1.OneAst.Type.Class("CsBoolean");
             }
-            else if (typeName === "number") {
+            else if (typeName === "int") {
                 type = Ast_1.OneAst.Type.Class("CsNumber");
             }
             else if (typeName === "void") {
@@ -145,7 +148,6 @@
                         // TODO: shouldn't we use just one `type` field instead of `cls` and `typeArguments`?
                         cls: { exprKind: Ast_1.OneAst.ExpressionKind.Identifier, text: type.className },
                         typeArguments: type.typeArguments,
-                        arguments: [],
                     };
                     this.reader.expectToken("(");
                     newExpr.arguments = this.expressionParser.parseCallArguments();
@@ -180,10 +182,6 @@
                 varDecl.name = this.reader.expectIdentifier("expected variable name");
                 if (this.reader.readToken("="))
                     varDecl.initializer = this.parseExpression();
-            }
-            else if (this.reader.readToken("delete")) {
-                const unsetStmt = statement = { stmtType: Ast_1.OneAst.StatementType.Unset };
-                unsetStmt.expression = this.parseExpression();
             }
             else if (this.reader.readToken("if")) {
                 requiresClosing = false;
@@ -287,20 +285,42 @@
             const expr = this.createExpressionParser(new Reader_1.Reader(expression)).parse();
             return { stmtType: Ast_1.OneAst.StatementType.ExpressionStatement, expression: expr };
         }
+        parseMethodParameters() {
+            const result = [];
+            if (!this.reader.readToken(")")) {
+                do {
+                    const param = {};
+                    result.push(param);
+                    this.reader.skipWhitespace();
+                    const paramStart = this.reader.offset;
+                    param.type = this.parseType();
+                    param.name = this.reader.expectIdentifier();
+                    this.context.push(`arg:${param.name}`);
+                    this.nodeManager.addNode(param, paramStart);
+                    this.context.pop();
+                } while (this.reader.readToken(","));
+                this.reader.expectToken(")");
+            }
+            return result;
+        }
         parseClass() {
-            const clsModifiers = this.reader.readModifiers(["public"]);
             if (!this.reader.readToken("class"))
                 return null;
             const clsStart = this.reader.prevTokenOffset;
-            const cls = { methods: {}, fields: {}, properties: {}, constructor: null };
+            const cls = { methods: {}, fields: {}, properties: {}, constructor: null, baseInterfaces: [] };
             cls.name = this.reader.expectIdentifier("expected identifier after 'class' keyword");
             this.context.push(`C:${cls.name}`);
             cls.typeArguments = this.parseTypeArguments();
+            if (this.reader.readToken(":")) {
+                do {
+                    cls.baseInterfaces.push(this.reader.expectIdentifier());
+                } while (this.reader.readToken(","));
+            }
             this.reader.expectToken("{");
             while (!this.reader.readToken("}")) {
                 const leadingTrivia = this.reader.readLeadingTrivia();
                 const memberStart = this.reader.offset;
-                const modifiers = this.reader.readModifiers(["static", "public", "protected", "private"]);
+                const modifiers = this.reader.readModifiers(["static", "public", "protected", "private", "virtual", "override"]);
                 const isStatic = modifiers.includes("static");
                 const visibility = modifiers.includes("private") ? Ast_1.OneAst.Visibility.Private :
                     modifiers.includes("protected") ? Ast_1.OneAst.Visibility.Protected : Ast_1.OneAst.Visibility.Public;
@@ -313,26 +333,13 @@
                 //   so we did not read the field name ("Child") yet
                 const fieldName = !isMethod && isConstructor ? this.reader.expectIdentifier() : memberName;
                 if (isMethod) {
-                    const method = { name: memberName, returns: memberType, static: isStatic, visibility, leadingTrivia, parameters: [], typeArguments: methodTypeArguments };
+                    const method = { name: memberName, returns: memberType, static: isStatic, visibility, leadingTrivia, typeArguments: methodTypeArguments };
                     if (isConstructor)
                         cls.constructor = method;
                     else
                         cls.methods[method.name] = method;
                     this.context.push(`M:${method.name}`);
-                    if (!this.reader.readToken(")")) {
-                        do {
-                            const param = {};
-                            method.parameters.push(param);
-                            this.reader.skipWhitespace();
-                            const paramStart = this.reader.offset;
-                            param.type = this.parseType();
-                            param.name = this.reader.expectIdentifier();
-                            this.context.push(`arg:${param.name}`);
-                            this.nodeManager.addNode(param, paramStart);
-                            this.context.pop();
-                        } while (this.reader.readToken(","));
-                        this.reader.expectToken(")");
-                    }
+                    method.parameters = this.parseMethodParameters();
                     method.body = this.parseBlock();
                     if (method.body === null)
                         this.reader.fail("method body is missing");
@@ -356,6 +363,45 @@
             this.nodeManager.addNode(cls, clsStart);
             this.context.pop();
             return cls;
+        }
+        parseInterface() {
+            if (!this.reader.readToken("interface"))
+                return null;
+            const intfStart = this.reader.prevTokenOffset;
+            const intf = { methods: {}, properties: {}, baseInterfaces: [] };
+            intf.name = this.reader.expectIdentifier("expected identifier after 'interface' keyword");
+            this.context.push(`I:${intf.name}`);
+            intf.typeArguments = this.parseTypeArguments();
+            if (this.reader.readToken(":")) {
+                do {
+                    intf.baseInterfaces.push(this.reader.expectIdentifier());
+                } while (this.reader.readToken(","));
+            }
+            this.reader.expectToken("{");
+            while (!this.reader.readToken("}")) {
+                const leadingTrivia = this.reader.readLeadingTrivia();
+                const memberStart = this.reader.offset;
+                const memberType = this.parseType();
+                const memberName = this.reader.expectIdentifier();
+                if (this.reader.readToken("(")) {
+                    const method = { name: memberName, returns: memberType, leadingTrivia, typeArguments: [] };
+                    intf.methods[method.name] = method;
+                    this.context.push(`M:${method.name}`);
+                    method.parameters = this.parseMethodParameters();
+                    this.reader.expectToken(";");
+                    this.nodeManager.addNode(method, memberStart);
+                    this.context.pop();
+                }
+                else if (this.reader.readToken("{")) {
+                    this.reader.fail("properties are not implemented yet");
+                }
+                else {
+                    this.reader.fail("unexpected member in interface");
+                }
+            }
+            this.nodeManager.addNode(intf, intfStart);
+            this.context.pop();
+            return intf;
         }
         parseEnum() {
             if (!this.reader.readToken("enum"))
@@ -381,7 +427,7 @@
             return enumObj;
         }
         parseSchema() {
-            const schema = { classes: {}, enums: {}, globals: {}, langData: this.langData };
+            const schema = { classes: {}, enums: {}, globals: {}, interfaces: {}, langData: this.langData, mainBlock: { statements: [] } };
             const usings = [];
             while (this.reader.readToken("using")) {
                 usings.push(this.parseExpression());
@@ -391,10 +437,17 @@
                 const leadingTrivia = this.reader.readLeadingTrivia();
                 if (this.reader.eof)
                     break;
+                const modifiers = this.reader.readModifiers(["public"]);
                 const cls = this.parseClass();
                 if (cls !== null) {
                     cls.leadingTrivia = leadingTrivia;
                     schema.classes[cls.name] = cls;
+                    continue;
+                }
+                const intf = this.parseInterface();
+                if (intf !== null) {
+                    intf.leadingTrivia = leadingTrivia;
+                    schema.interfaces[intf.name] = intf;
                     continue;
                 }
                 const enumObj = this.parseEnum();
@@ -404,6 +457,12 @@
                     continue;
                 }
                 this.reader.fail("expected 'class' or 'enum' here");
+            }
+            const prgClass = schema.classes["Program"];
+            if (prgClass && prgClass.methods["Main"]) {
+                schema.mainBlock = prgClass.methods["Main"].body;
+                delete prgClass.methods["Main"];
+                delete schema.classes["Program"];
             }
             return schema;
         }

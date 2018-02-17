@@ -2,8 +2,7 @@ import { OneAst as one } from "./Ast";
 import { LangFileSchema } from "../Generator/LangFileSchema";
 
 export class AstHelper {
-    static replaceProperties<T>(dest, src: T): T {
-        const keep = ["nodeData"];
+    static replaceProperties<T>(dest, src: T, keep = ["nodeData", "leadingTrivia"]): T {
         dest.__proto__ = (<any>src).__proto__;
 
         for (var i in dest)
@@ -63,5 +62,20 @@ export class AstHelper {
         const cls = lang.classes[methodPathParts[0]];
         const method = cls && cls.methods && cls.methods[methodPathParts[1]];
         return method;
+    }
+
+    static isBinaryOpModifies(expr: one.BinaryExpression) {
+        return ["=", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "<<=", ">>="].includes(expr.operator);
+    }
+
+    static getModifiedExpr(expr: one.Expression) {
+        if (expr.exprKind === "Unary")
+            return (<one.UnaryExpression> expr).operand;
+        else if (expr.exprKind === "Binary") {
+            const binaryExpr = <one.BinaryExpression> expr;
+            if (AstHelper.isBinaryOpModifies(binaryExpr))
+                return binaryExpr.left;
+        }
+        return null;
     }
 }

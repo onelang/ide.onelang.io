@@ -26,7 +26,7 @@ classes:
   OneConsole:
     methods:
       print:
-        template: 'print(({{str}}) . "\n")'
+        template: 'print({{str}} . "\n")'
   OneArray:
     fields:
       length:
@@ -62,6 +62,33 @@ classes:
         template: throw new Exception({{message}})
   OneReflect:
     includes: [one]
+  OneJson:
+    methods:
+      parse: "json_decode({{str}})"
+  OneJValue:
+    methods:
+      isObject: "is_object({{self}})"
+      isArray: "is_array({{self}})"
+      isString: "is_string({{self}})"
+      isNumber: "is_numeric({{self}})"
+      isBool: "is_bool({{self}})"
+      isNull: "is_null({{self}})"
+      asString: "{{self}}"
+      asNumber: "{{self}}"
+      asBool: "{{self}}"
+      asObject: "{{self}}"
+      getArrayItems: "{{self}}"
+  OneJObject:
+    methods:
+      getProperties: "array_keys((array){{self}})"
+      get: "{{self}}->{{{name}}}"
+  OneJProperty:
+    methods:
+      getName: "{{self}}"
+      getValue: "{{obj}}->{{{self}}}"
+  One:
+    methods:
+      langName: '"PHP"'
 operators:
   OneString + OneString:
     template: "{{gen(left)}} . {{gen(right)}}"
@@ -88,7 +115,7 @@ templates:
     <?php
 
     {{for inc in includes|sep=\n}}
-      require_once("{{inc}}.php");
+      require_once("{{inc.source}}.php");
     {{/for}}
 
     {{for enum in enums|sep=\n\n}}
@@ -96,7 +123,7 @@ templates:
           {{for item in enum.values}}
             const {{item.name}} = {{item.intValue}};
           {{/for}}
-      };
+      }
     {{/for}}
 
     {{for class in classes|sep=\n\n}}
@@ -116,13 +143,20 @@ templates:
           {{/if}}
 
           {{for method in class.methods|sep="\n    \n"}}
+            {{if config.genMeta}}
+              // @signature {{method.name}}(
+              {{for param in method.parameters|inline sep=", "}}
+                {{param.name}}: {{if param.typeInfo}}{{param.typeInfo.oneName}}{{else}}???{{/if}}
+              {{/for}}
+              ): {{if method.returnTypeInfo}}{{method.returnTypeInfo.oneName}}{{else}}???{{/if}}
+            {{/if}}          
             {{if method.static}}static {{/if}}function {{method.name}}({{genArgs(method)}}) {
                 {{genBody(method.body)}}
             }
           {{/for}}
       }
 
-      {{if class.reflect}}
+      {{if class.attributes["reflect"]}}
         OneReflect::setupClass(new OneClass("{{class.name}}", [
             {{for field in class.fields|sep=\n}}
               new OneField("{{field.name}}", {{if field.static}}true{{else}}false{{/if}}, "{{field.type}}"),
@@ -138,6 +172,8 @@ templates:
           ]));
       {{/if}}
     {{/for}}
+
+    {{genBody(mainBlock)}}
 
   genBody:
     args:
@@ -165,6 +201,14 @@ templates:
     args:
       - name: itemVar
     template: "${{itemVar.outName}} = {{gen(itemVar.initializer)}}"
+  genWithParen:
+    args: [{ name: expr }]
+    template: |-
+      {{if expr.exprKind == "Binary" or expr.exprKind == "Conditional"}}
+        ({{gen(expr)}})
+      {{else}}
+        {{gen(expr)}}
+      {{/if}}
 expressions:
   call: |-
     {{gen(expr.method)}}(
@@ -202,26 +246,24 @@ expressions:
   methodArgument: "${{expr.varRef.outName}}"
   instanceField: "{{gen(expr.thisExpr)}}->{{expr.varRef.outName}}"
   staticField: "{{gen(expr.thisExpr)}}::${{expr.varRef.outName}}"
-  falseLiteral: "FALSE"
-  trueLiteral: "TRUE"
+  falseLiteral: "false"
+  trueLiteral: "true"
   elementAccess: "{{gen(expr.object)}}[{{gen(expr.elementExpr)}}]"
   thisReference: "$this"
-  conditional: "{{gen(expr.condition)}} ? {{gen(expr.whenTrue)}} : ({{gen(expr.whenFalse)}})"
+  conditional: "{{gen(expr.condition)}} ? {{genWithParen(expr.whenTrue)}} : {{genWithParen(expr.whenFalse)}}"
   break: break;
   templateString: |-
-    "
-    {{for part in expr.parts|inline}}
-      {{if part.literal|inline}}
-        {{part.text}}
+    {{for part in expr.parts|inline sep=" . "}}
+      {{if part.literal && part.text != ""|inline}}
+        "{{escapeQuotes(part.text)}}"
       {{else}}
         {{if part.expr.valueType.isBoolean|inline}}
-          " . (({{gen(part.expr)}}) ? "true" : "false") . "
+          ({{genWithParen(part.expr)}} ? "true" : "false")
         {{else}}
-          " . ({{gen(part.expr)}}) . "
+          {{genWithParen(part.expr)}}
         {{/if}}
       {{/if}}
     {{/for}}
-    "
   foreach: |-
     foreach ({{gen(expr.items)}} as ${{expr.itemVariable.outName}}) {
         {{genBody(expr.body)}}

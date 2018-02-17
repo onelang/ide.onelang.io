@@ -9,7 +9,10 @@ export namespace OneAst {
             array: string,
          };
     
+         langId: string;
          allowImplicitVariableDeclaration: boolean;
+         supportsTemplateStrings: boolean;
+         supportsFor: boolean;
     }
 
     export interface TextRange {
@@ -34,6 +37,7 @@ export namespace OneAst {
         enums: { [name: string]: Enum };
         classes: { [name: string]: Class };
         interfaces: { [name: string]: Interface };
+        mainBlock: Block;
     }
 
     export interface NamedItem extends INode {
@@ -56,6 +60,7 @@ export namespace OneAst {
     export interface Interface extends NamedItem {
         schemaRef?: Schema;
         type?: Type;
+        properties: { [name: string]: Property };
         methods: { [name: string]: Method };
         typeArguments: string[];
         meta?: {
@@ -68,7 +73,6 @@ export namespace OneAst {
 
     export interface Class extends Interface {
         fields: { [name: string]: Field };
-        properties: { [name: string]: Property };
         constructor: Constructor;
         meta?: {
             iterable?: boolean;
@@ -152,6 +156,28 @@ export namespace OneAst {
                 return this.genericsName;
             } else if (this.isEnum) {
                 return `${this.enumName} (enum)`;
+            } else {
+                return "?";
+            }
+        }
+
+        get oneName() {
+            if (this.isPrimitiveType) {
+                return this.typeKind.toString();
+            } else if (this.isNumber) {
+                return "number";
+            } else if (this.isString) {
+                return "string";
+            } else if (this.isBoolean) {
+                return "bool";
+            } else if (this.isCharacter) {
+                return "char";
+            } else if (this.isClassOrInterface) {
+                return this.className + (this.typeArguments.length === 0 ? "" : `<${this.typeArguments.map(x => x.repr()).join(", ")}>`);
+            } else if (this.isGenerics) {
+                return this.genericsName;
+            } else if (this.isEnum) {
+                return `${this.enumName}`;
             } else {
                 return "?";
             }

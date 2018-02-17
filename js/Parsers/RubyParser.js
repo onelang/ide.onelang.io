@@ -16,6 +16,7 @@
     class RubyParser {
         constructor(source) {
             this.langData = {
+                langId: "ruby",
                 literalClassNames: {
                     string: "RubyString",
                     boolean: "RubyBoolean",
@@ -24,7 +25,9 @@
                     map: "RubyMap",
                     array: "RubyArray",
                 },
-                allowImplicitVariableDeclaration: true
+                allowImplicitVariableDeclaration: true,
+                supportsTemplateStrings: true,
+                supportsFor: false,
             };
             this.context = [];
             // TODO: less hacky way of removing test code?
@@ -33,6 +36,7 @@
             this.reader = new Reader_1.Reader(source);
             this.reader.supportsBlockComment = false;
             this.reader.lineComment = "#";
+            this.reader.identifierRegex = "[A-Za-z_][A-Za-z0-9_]*[?!]?";
             this.reader.errorCallback = error => {
                 throw new Error(`[RubyParser] ${error.message} at ${error.cursor.line}:${error.cursor.column} (context: ${this.context.join("/")})\n${this.reader.linePreview}`);
             };
@@ -57,7 +61,7 @@
                 return { exprKind: "Identifier", text: "this" };
             }
             else if (this.reader.readToken("@")) {
-                const fieldName = this.reader.readIdentifier();
+                const fieldName = this.reader.expectIdentifier();
                 return this.parseExprFromString(`this.${fieldName}`);
             }
             else if (this.reader.readToken("/#{Regexp.escape(")) {
@@ -191,9 +195,11 @@
             if (!this.reader.readToken("class"))
                 return null;
             const clsStart = this.reader.prevTokenOffset;
-            const cls = { methods: {}, fields: {}, properties: {}, constructor: null, typeArguments: [] };
+            const cls = { methods: {}, fields: {}, properties: {}, constructor: null, typeArguments: [], baseInterfaces: [] };
             cls.name = this.reader.expectIdentifier("expected identifier after 'class' keyword");
             this.context.push(`C:${cls.name}`);
+            if (this.reader.readToken("<"))
+                cls.baseClass = this.reader.expectIdentifier();
             while (!this.reader.readToken("end")) {
                 const leadingTrivia = this.reader.readLeadingTrivia();
                 const memberStart = this.reader.offset;
@@ -248,6 +254,7 @@
                     }
                 }
                 else {
+                    this.reader.fail("Unexpected class member");
                     debugger;
                 }
             }
@@ -275,11 +282,11 @@
             return enumObj;
         }
         parseSchema() {
-            const schema = { classes: {}, enums: {}, globals: {}, langData: this.langData };
+            const schema = { classes: {}, enums: {}, globals: {}, interfaces: {}, langData: this.langData, mainBlock: { statements: [] } };
             const usings = [];
             while (this.reader.readToken("require"))
                 usings.push(this.parseExpression());
-            while (!this.reader.eof) {
+            while (true) {
                 const leadingTrivia = this.reader.readLeadingTrivia();
                 if (this.reader.eof)
                     break;
@@ -295,7 +302,13 @@
                     schema.enums[enumObj.name] = enumObj;
                     continue;
                 }
-                this.reader.fail("expected 'class' or 'enum' here");
+                break;
+            }
+            while (!this.reader.eof) {
+                const stmt = this.parseStatement();
+                if (stmt === null)
+                    this.reader.fail("expected 'class', 'enum' or 'interface' or a statement here");
+                schema.mainBlock.statements.push(stmt);
             }
             return schema;
         }

@@ -63,19 +63,21 @@ classes:
     includes: [iostream]
     methods:
       print:
-        template: "cout << ({{str}}) << endl"
+        template: "cout << {{genWithParen(str)}} << endl"
   OneError:
     includes: [stdexcept]
     methods:
       raise:
         template: throw std::runtime_error({{message}})
+  One:
+    methods:
+      langName: '"C++"'
 operators:
   OneString + OneNumber:
     includes: [string]
     template: "{{gen(left)}} + to_string({{gen(right)}})"
   OneString + OneBoolean:
     template: '{{gen(left)}} + ({{gen(right)}} ? "true" : "false")'
-includes: [memory, fstream, vector, map]
 templates:
   testGenerator: |-
     int main()
@@ -92,7 +94,7 @@ templates:
   main: |-
     #include <one.hpp>
     {{for inc in includes|sep=\n}}
-      #include <{{inc}}>
+      #include <{{inc.source}}>
     {{/for}}
 
     {{for enum in enums|sep=\n}}
@@ -142,7 +144,7 @@ templates:
         {{/if}}
       {{/for}}
       
-      {{if class.reflect}}
+      {{if class.attributes["reflect"]}}
         static struct Reflection{{class.name}}
         {
           Reflection{{class.name}}() {
@@ -184,6 +186,15 @@ templates:
         } _reflection{{class.name}};
       {{/if}}
     {{/for}}
+
+    {{if mainBlock.statements.length > 0}}
+      int main()
+      {
+          {{genBody(mainBlock)}}
+          return 0;
+      }
+    {{/if}}
+    
   genFields:
     args:
       - name: fields
@@ -191,6 +202,7 @@ templates:
       {{for field in fields|sep=\n}}
         {{if field.static}}static {{/if}}{{getType(field.typeInfo)}} {{field.name}}{{if !field.static && field.initializer}} = {{gen(field.initializer)}}{{/if}};
       {{/for}}
+
   getType:
     args:
       - name: item
@@ -229,12 +241,12 @@ templates:
         >
       {{/if}}
       class {{class.name}}
-      {{if class.baseClasses.length > 0 or class.reflect|inline}}
+      {{if class.baseClasses.length > 0 or class.attributes["reflect"]|inline}}
          : 
         {{for item in class.baseClasses|inline sep=", "}}
           public {{item}}
         {{/for}}
-        {{if class.reflect}}
+        {{if class.attributes["reflect"]}}
           {{if class.baseClasses.length > 0}}, {{/if}}public ReflectedClass
         {{/if}}
       {{/if}}
@@ -266,6 +278,14 @@ templates:
       - name: itemVar
     template: |-
       {{if itemVar.type.isNumber}}int{{else}}auto{{/if}} {{itemVar.outName}} = {{gen(itemVar.initializer)}}
+  genWithParen:
+    args: [{ name: expr }]
+    template: |-
+      {{if expr.exprKind == "Binary" or expr.exprKind == "Conditional"}}
+        ({{gen(expr)}})
+      {{else}}
+        {{gen(expr)}}
+      {{/if}}      
 expressions:
   call: |-
     {{gen(expr.method)}}(
@@ -321,19 +341,20 @@ expressions:
   cast: "static_cast<{{typeName(expr.newType)}}>({{gen(expr.expression)}})"
   conditional: "{{gen(expr.condition)}} ? {{gen(expr.whenTrue)}} : {{gen(expr.whenFalse)}}"
   templateString: |-
-    string() + 
     {{for part in expr.parts|sep=" + " inline}}
+      {{if part_idx == 0|inline}}string({{/if}}
       {{if part.literal|inline}}
-        "{{part.text}}"
+        "{{escapeQuotes(part.text)}}"
       {{elif part.expr.valueType.isNumber|inline}}
         to_string({{gen(part.expr)}})
       {{elif part.expr.valueType.isEnum|inline}}
         {{part.expr.valueType.enumName}}ToStr[(int)({{gen(part.expr)}})]
       {{elif part.expr.valueType.isBoolean|inline}}
-        (({{gen(part.expr)}}) ? "true" : "false")
+        ({{genWithParen(part.expr)}} ? "true" : "false")
       {{else}}
-        {{gen(part.expr)}}
+        {{genWithParen(part.expr)}}
       {{/if}}
+      {{if part_idx == 0|inline}}){{/if}}
     {{/for}}
   foreach: |-
     for (auto it = {{gen(expr.items)}}->begin(); it != {{gen(expr.items)}}->end(); ++it) {

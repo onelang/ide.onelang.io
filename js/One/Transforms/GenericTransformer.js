@@ -93,9 +93,11 @@
         }
     }
     class GenericTransformer extends AstVisitor_1.AstVisitor {
-        constructor(file) {
+        constructor(file, lang) {
             super();
-            this.transforms = file.transforms.map(x => new GenericTransform(x.input, x.output));
+            this.transforms = file.transforms
+                .filter(x => !lang || !x.langs || x.langs.includes(lang))
+                .map(x => new GenericTransform(x.input, x.output));
         }
         visitStatement(statement) {
             for (const transform of this.transforms)

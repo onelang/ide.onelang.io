@@ -20,14 +20,14 @@
         }
         visitThisReference(expr) {
             if (this.thisReplacement)
-                AstHelper_1.AstHelper.replaceProperties(expr, this.thisReplacement);
+                AstHelper_1.AstHelper.replaceProperties(expr, this.thisReplacement, []);
         }
         visitVariableRef(expr) {
             if (expr.thisExpr)
                 this.visitExpression(expr.thisExpr, null);
             const changeTo = this.replacements[expr.varRef.metaPath];
             if (changeTo)
-                AstHelper_1.AstHelper.replaceProperties(expr, changeTo);
+                AstHelper_1.AstHelper.replaceProperties(expr, changeTo, []);
         }
         visitStatements(statements) {
             for (const statement of statements)

@@ -31,7 +31,7 @@
             this.name = name;
             this.args = args;
             this.template = template;
-            this.body = TemplateParser_1.TemplateParser.parse(template);
+            this.body = TemplateParser_1.TemplateParser.parse(template.replace(/\\#/g, "#"));
         }
         static fromSignature(signature, template) {
             const signatureAst = ExprLangParser_1.ExprLangParser.parse(signature);
@@ -70,6 +70,7 @@
             this.vm = new ExprLangVM_1.ExprLangVM();
             this.methods = new ExprLangVM_1.VariableSource("TemplateGenerator methods");
             this.callStack = [];
+            this.objectHook = null;
             this.vm.methodHandler = this;
             this.rootVars = variables.inherit(this.methods);
         }
@@ -212,10 +213,18 @@
         }
         processTemplateNode(node, vars) {
             const result = this.vm.evaluate(node.expr, vars);
-            if (typeof (result) === "object")
+            if (result === null) {
+                return null;
+            }
+            else if (Array.isArray(result)) {
                 return result;
-            const resNode = new GeneratedNode(result);
-            return [resNode];
+            }
+            else if (typeof result === "object" && this.objectHook) {
+                return this.objectHook(result);
+            }
+            else {
+                return [new GeneratedNode(result.toString())];
+            }
         }
         generateNode(node, vars) {
             let result;

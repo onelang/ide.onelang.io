@@ -67,6 +67,39 @@ classes:
   OneReflect:
     includes: ["one"]
     template: "one.Reflect"
+  OneBigInteger:
+    methods:
+      fromInt:
+        template: "{{value}}"
+  OneJson:
+    methods:
+      parse:
+        includes: [json]
+        template: "json.loads({{str}})"
+  OneJValue:
+    methods:
+      isObject: "isinstance({{self}}, dict)"
+      isArray: "isinstance({{self}}, list)"
+      isString: "isinstance({{self}}, str)"
+      isNumber: "isinstance({{self}}, (int, long, float))"
+      isBool: "({{self}} == True or {{self}} == False)"
+      isNull: "({{self}} is None)"
+      asString: "{{self}}"
+      asNumber: "{{self}}"
+      asBool: "{{self}}"
+      asObject: "{{self}}"
+      getArrayItems: "{{self}}"
+  OneJObject:
+    methods:
+      getProperties: "{{self}}.keys()"
+      get: "{{self}}[{{name}}]"
+  OneJProperty:
+    methods:
+      getName: "{{self}}"
+      getValue: "{{obj}}[{{self}}]"
+  One:
+    methods:
+      langName: '"Python"'
 operators:
   OneString + OneNumber:
     template: "{{gen(left)}} + str({{gen(right)}})"
@@ -84,7 +117,7 @@ templates:
       from enum import Enum
     {{/if}}
     {{for inc in includes|sep=\n}}
-      import {{inc}}
+      import {{inc.name}}
     {{/for}}
 
     {{for enum in enums|sep=\n\n}}
@@ -126,7 +159,7 @@ templates:
         {{/if}}
       {{/for}}
 
-      {{if class.reflect}}
+      {{if class.attributes["reflect"]}}
         one.Reflect.setup_class(one.Class({{class.name}}, [
             {{for field in class.fields|sep=\n}}
               one.Field("{{field.name}}", {{if field.static}}True{{else}}False{{/if}}, "{{field.type}}"),
@@ -141,6 +174,10 @@ templates:
             {{/for}}
           ]));
       {{/if}}
+    {{/for}}
+
+    {{for statement in mainBlock.statements|sep=\n}}
+      {{statement.leadingTrivia2}}{{gen(statement)}}
     {{/for}}
 
   genBody:
@@ -234,18 +271,18 @@ expressions:
     "
     {{for part in expr.parts|inline}}
       {{if part.literal|inline}}
-        {{part.text}}
+        {{escapeQuotes(part.text)}}
       {{else}}
         %s
       {{/if}}
     {{/for}}
     " % (
-    {{for part in expr.parts|inline}}
+    {{for part in expr.parts|inline sep=", "}}
       {{if part.expr|inline}}
         {{if part.expr.valueType.isBoolean|inline}}
-          "true" if {{gen(part.expr)}} else "false", 
+          "true" if {{gen(part.expr)}} else "false"
         {{else}}
-          {{gen(part.expr)}}, 
+          {{gen(part.expr)}}
         {{/if}}
       {{/if}}
     {{/for}}

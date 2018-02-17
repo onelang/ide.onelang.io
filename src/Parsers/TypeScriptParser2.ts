@@ -6,7 +6,8 @@ import { NodeManager } from "./Common/NodeManager";
 import { IParser } from "./Common/IParser";
 
 export class TypeScriptParser2 implements IParser {
-    langData: ast.ILangData = { 
+    langData: ast.ILangData = {
+        langId: "typescript",
         literalClassNames: {
             string: "TsString",
             boolean: "TsBoolean",
@@ -15,7 +16,9 @@ export class TypeScriptParser2 implements IParser {
             map: "TsMap",
             array: "TsArray",
         },
-        allowImplicitVariableDeclaration: false
+        allowImplicitVariableDeclaration: false,
+        supportsTemplateStrings: true,
+        supportsFor: true,
     };
 
     context: string[] = [];
@@ -56,6 +59,8 @@ export class TypeScriptParser2 implements IParser {
             type = ast.Type.Class("TsNumber");
         } else if (typeName === "any") {
             type = ast.Type.Any;
+        } else if (typeName === "void") {
+            type = ast.Type.Void;
         } else {
             type = ast.Type.Class(typeName);
             if (this.reader.readToken("<")) {
@@ -306,7 +311,7 @@ export class TypeScriptParser2 implements IParser {
             this.reader.expectToken(")");
         }
 
-        method.returns = this.reader.readToken(":") ? this.parseType() : ast.Type.Void;
+        method.returns = this.reader.readToken(":") ? this.parseType() : ast.Type.Any;
 
         if (declarationOnly) {
             this.reader.expectToken(";");
@@ -368,6 +373,7 @@ export class TypeScriptParser2 implements IParser {
 
         if (this.reader.readToken("extends"))
             cls.baseClass = this.reader.expectIdentifier();
+
         while (this.reader.readToken("implements"))
             cls.baseInterfaces.push(this.reader.expectIdentifier());
 
@@ -462,8 +468,8 @@ export class TypeScriptParser2 implements IParser {
     }
 
     parseSchema() {
-        const schema = <ast.Schema> { classes: {}, enums: {}, globals: {}, interfaces: {}, langData: this.langData };
-        while (!this.reader.eof) {
+        const schema = <ast.Schema> { classes: {}, enums: {}, globals: {}, interfaces: {}, langData: this.langData, mainBlock: { statements: [] } };
+        while (true) {
             const leadingTrivia = this.reader.readLeadingTrivia();
             if (this.reader.eof) break;
 
@@ -473,7 +479,7 @@ export class TypeScriptParser2 implements IParser {
             if (cls !== null) {
                 cls.leadingTrivia = leadingTrivia;
                 schema.classes[cls.name] = cls;
-                continue;
+                continue;                
             }
 
             const enumObj = this.parseEnum();
@@ -490,8 +496,23 @@ export class TypeScriptParser2 implements IParser {
                 continue;
             }
 
-            this.reader.fail("expected 'class', 'enum' or 'interface' here");
+            break;
         }
+
+        this.reader.skipWhitespace();
+
+        while (true) {
+            const leadingTrivia = this.reader.readLeadingTrivia();
+            if (this.reader.eof) break;
+
+            const stmt = this.parseStatement();
+            if (stmt === null)
+                this.reader.fail("expected 'class', 'enum' or 'interface' or a statement here");
+
+            stmt.leadingTrivia = leadingTrivia;
+            schema.mainBlock.statements.push(stmt);
+        }
+        
         return schema;
     }
 

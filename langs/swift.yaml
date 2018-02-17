@@ -52,17 +52,13 @@ classes:
   OneMap:
     type: "[{{genType(typeArguments[0])}}: {{genType(typeArguments[1])}}]"
     methods:
-      keys:
-        template: "Array({{self}}!.keys)"
-      values:
-        template: "Array({{self}}!.values)"
+      keys: "Array({{self}}!.keys)"
+      values: "Array({{self}}!.values)"
       remove:
         mutates: true
         template: "{{self}}![{{key}}] = nil"
-      hasKey:
-        template: "{{self}}![{{key}}] != nil"
-      get:
-        template: "{{self}}![{{key}}]!"
+      hasKey: "{{self}}![{{key}}] != nil"
+      get: "{{self}}![{{key}}]!"
       set:
         mutates: true
         template: "{{self}}![{{key}}] = {{value}}"
@@ -76,6 +72,37 @@ classes:
       raise:
         throws: true
         template: throw OneError.RuntimeError({{message}})
+  OneJson:
+    includes: [Foundation]
+    methods:
+      parse: "try? JSONSerialization.jsonObject(with: {{str}}.data(using: .utf8)!)"
+  OneJValue:
+    type: Any
+    methods:
+      isObject: "({{self}} is [String: Any?])"
+      isArray: "({{self}} is [Any])"
+      isString: "({{self}} is String)"
+      isNumber: "({{self}} is Int)"
+      isBool: "({{self}} is Bool)"
+      isNull: "({{self}} == nil)"
+      asString: "({{self}} as! String)"
+      asNumber: "({{self}} as! Int)"
+      asBool: "({{self}} as! Bool)"
+      asObject: "({{self}} as? [String: Any?])"
+      getArrayItems: "{{self}}"
+  OneJObject:
+    type: Any
+    methods:
+      getProperties: "Array({{self}}!.keys)"
+      get: "{{self}}![{{name}}]"
+  OneJProperty:
+    type: String
+    methods:
+      getName: "{{self}}"
+      getValue: "({{obj}} as! [String: Any?])[{{self}}!]!"
+  One:
+    methods:
+      langName: '"Swift"'
 templates:
   testGenerator: |-
     {{if methodInfo.throws}}
@@ -89,7 +116,7 @@ templates:
     {{/if}}
   main: |-
     {{for inc in includes|sep=\n}}
-      import {{inc}}
+      import {{inc.name}}
     {{/for}}
 
     {{for enum in enums|sep=\n}}
@@ -128,7 +155,7 @@ templates:
         {{/for}}
       }
 
-      {{if class.reflect}}
+      {{if class.attributes["reflect"]}}
         let _ = OneReflect.addClass(OneClass(name: "{{class.name}}"))
           {{for field in class.fields}}
             {{if field.static}}
@@ -157,6 +184,8 @@ templates:
           {{/for}}
       {{/if}}
     {{/for}}
+
+    {{genBody(mainBlock)}}
 
   genTypeArgs:
     args: [{name: class}]
@@ -270,7 +299,7 @@ expressions:
     "
     {{for part in expr.parts|inline}}
       {{if part.literal|inline}}
-        {{part.text}}
+        {{escapeQuotes(part.text)}}
       {{else}}
         \({{unwrap(part.expr)}})
       {{/if}}

@@ -222,6 +222,26 @@
             }
             this.indent(-1);
         }
+        printProperties(intf) {
+            for (const prop of Object.values(intf.properties || {})) {
+                this.addLine(`${intf.name}::${prop.name}: ${prop.type && prop.type.repr() || "null"}`);
+                this.visitBlock(prop.getter);
+            }
+            this.newLine();
+        }
+        printMethods(cls, showEmptyBody = true) {
+            for (const method of Object.values(cls.methods)) {
+                const argList = method.parameters.map(arg => `${arg.name}: ${arg.type ? arg.type.repr() : "???"}`).join(", ");
+                const addInfo = [method.static ? "static" : null, method.throws ? "throws" : null].filter(x => x);
+                this.addLine(`${cls.name}::${method.name}(${argList}): ${method.returns ? method.returns.repr() : "???"}`
+                    + `${addInfo.length > 0 ? ` [${addInfo.join(", ")}]` : ""}`);
+                if (method.body)
+                    this.visitBlock(method.body);
+                else if (showEmptyBody)
+                    this.addLine("  <no body>");
+                this.newLine();
+            }
+        }
         generate(schemaCtx) {
             if (this.result)
                 return this.result;
@@ -232,6 +252,10 @@
             for (const _enum of Object.values(schemaCtx.schema.enums))
                 this.addLine(`enum ${_enum.name}: ${_enum.values.map(x => x.name).join(', ')}`);
             this.newLine();
+            for (const intf of Object.values(schemaCtx.schema.interfaces)) {
+                this.printProperties(intf);
+                this.printMethods(intf, false);
+            }
             for (const cls of Object.values(schemaCtx.schema.classes)) {
                 for (const field of Object.values(cls.fields)) {
                     this.addLine(`${cls.name}::${field.name}: ${field.type && field.type.repr() || "null"}`);
@@ -241,27 +265,17 @@
                     }
                 }
                 this.newLine();
-                for (const prop of Object.values(cls.properties)) {
-                    this.addLine(`${cls.name}::${prop.name}: ${prop.type && prop.type.repr() || "null"}`);
-                    this.visitBlock(prop.getter);
-                }
-                this.newLine();
+                this.printProperties(cls);
                 if (cls.constructor) {
                     this.addLine(`${cls.name}::constructor`);
                     this.visitBlock(cls.constructor.body);
                 }
                 this.newLine();
-                for (const method of Object.values(cls.methods)) {
-                    const argList = method.parameters.map(arg => `${arg.name}: ${arg.type ? arg.type.repr() : "???"}`).join(", ");
-                    const addInfo = [method.static ? "static" : null, method.throws ? "throws" : null].filter(x => x);
-                    this.addLine(`${cls.name}::${method.name}(${argList}): ${method.returns ? method.returns.repr() : "???"}`
-                        + `${addInfo.length > 0 ? ` [${addInfo.join(", ")}]` : ""}`);
-                    if (method.body)
-                        this.visitBlock(method.body);
-                    else
-                        this.addLine("  <no body>");
-                    this.newLine();
-                }
+                this.printMethods(cls);
+            }
+            if (schemaCtx.schema.mainBlock.statements.length > 0) {
+                this.addLine(`main()`);
+                this.visitBlock(schemaCtx.schema.mainBlock);
             }
             return this.result;
         }

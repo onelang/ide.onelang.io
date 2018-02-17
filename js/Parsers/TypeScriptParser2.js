@@ -16,6 +16,7 @@
     class TypeScriptParser2 {
         constructor(source) {
             this.langData = {
+                langId: "typescript",
                 literalClassNames: {
                     string: "TsString",
                     boolean: "TsBoolean",
@@ -24,7 +25,9 @@
                     map: "TsMap",
                     array: "TsArray",
                 },
-                allowImplicitVariableDeclaration: false
+                allowImplicitVariableDeclaration: false,
+                supportsTemplateStrings: true,
+                supportsFor: true,
             };
             this.context = [];
             // TODO: less hacky way of removing test code?
@@ -58,6 +61,9 @@
             }
             else if (typeName === "any") {
                 type = Ast_1.OneAst.Type.Any;
+            }
+            else if (typeName === "void") {
+                type = Ast_1.OneAst.Type.Void;
             }
             else {
                 type = Ast_1.OneAst.Type.Class(typeName);
@@ -292,7 +298,7 @@
                 } while (this.reader.readToken(","));
                 this.reader.expectToken(")");
             }
-            method.returns = this.reader.readToken(":") ? this.parseType() : Ast_1.OneAst.Type.Void;
+            method.returns = this.reader.readToken(":") ? this.parseType() : Ast_1.OneAst.Type.Any;
             if (declarationOnly) {
                 this.reader.expectToken(";");
             }
@@ -427,8 +433,8 @@
             return enumObj;
         }
         parseSchema() {
-            const schema = { classes: {}, enums: {}, globals: {}, interfaces: {}, langData: this.langData };
-            while (!this.reader.eof) {
+            const schema = { classes: {}, enums: {}, globals: {}, interfaces: {}, langData: this.langData, mainBlock: { statements: [] } };
+            while (true) {
                 const leadingTrivia = this.reader.readLeadingTrivia();
                 if (this.reader.eof)
                     break;
@@ -451,7 +457,18 @@
                     schema.interfaces[intf.name] = intf;
                     continue;
                 }
-                this.reader.fail("expected 'class', 'enum' or 'interface' here");
+                break;
+            }
+            this.reader.skipWhitespace();
+            while (true) {
+                const leadingTrivia = this.reader.readLeadingTrivia();
+                if (this.reader.eof)
+                    break;
+                const stmt = this.parseStatement();
+                if (stmt === null)
+                    this.reader.fail("expected 'class', 'enum' or 'interface' or a statement here");
+                stmt.leadingTrivia = leadingTrivia;
+                schema.mainBlock.statements.push(stmt);
             }
             return schema;
         }

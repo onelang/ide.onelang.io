@@ -43,3 +43,70 @@ transforms:
         object: $object
         propertyName: get
       arguments: [$elementExpr]
+  - description: "(Ruby) $className::new($arguments)"
+    langs: [ruby]
+    input:
+      exprKind: Call
+      method:
+        exprKind: PropertyAccess
+        object: $classIdentifier
+        propertyName: new
+      arguments: $arguments
+    output:
+      exprKind: New
+      cls: $classIdentifier
+      typeArguments: []
+      arguments: $arguments
+  - description: "(PHP) $var1 . $var2   =>   $var1 + $var2"
+    langs: [php]
+    input:
+      exprKind: Binary
+      operator: .
+      left: $left
+      right: $right
+    output:
+      exprKind: Binary
+      operator: +
+      left: $left
+      right: $right
+  - description: "(Ruby) i += 1   =>   i++"
+    langs: [ruby]
+    input:
+      exprKind: Binary
+      operator: +=
+      left: $var
+      right:
+        exprKind: Literal
+        literalType: numeric
+        value: "1"
+    output:
+      exprKind: Unary
+      unaryType: postfix
+      operator: ++
+      operand: $var
+  - description: "(PHP) count($arr)  =>  $arr.length"
+    langs: [php]
+    input:
+      exprKind: Call
+      method:
+        exprKind: Identifier
+        text: count
+      arguments: [$obj]
+    output:
+      exprKind: PropertyAccess
+      object: $obj
+      propertyName: length
+  - description: "(Ruby) $arr << $item  =>  $arr.add($item)"
+    langs: [ruby]
+    input:
+      exprKind: Binary
+      operator: "<<"
+      left: $arr
+      right: $item
+    output:
+      exprKind: Call
+      method:
+        exprKind: PropertyAccess
+        object: $arr
+        propertyName: add
+      arguments: [$item]

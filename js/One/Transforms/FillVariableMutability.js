@@ -17,7 +17,7 @@
             this.lang = lang;
         }
         visitBinaryExpression(expr, isMutable) {
-            this.visitExpression(expr.left, ["=", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "<<=", ">>="].includes(expr.operator));
+            this.visitExpression(expr.left, AstHelper_1.AstHelper.isBinaryOpModifies(expr));
             this.visitExpression(expr.right, false);
         }
         visitCallExpression(callExpr, isMutable) {

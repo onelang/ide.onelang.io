@@ -48,12 +48,15 @@
             this.prevTokenOffset = -1;
             this.cursorSearch = new CursorPositionSearch(input);
         }
+        clone() {
+            return Object.assign(Object.create(Object.getPrototypeOf(this)), this);
+        }
         get eof() { return this.offset >= this.input.length; }
         get cursor() { return this.cursorSearch.getCursorForOffset(this.offset); }
         get linePreview() {
             const cursor = this.cursor;
-            const line = this.input.substring(cursor.lineStart, cursor.lineEnd);
-            return line + " ".repeat(cursor.column - 1) + "^^^";
+            const line = this.input.substring(cursor.lineStart, cursor.lineEnd - 1);
+            return `${line}\n${" ".repeat(cursor.column - 1)}^^^`;
         }
         get preview() {
             let preview = this.input.substr(this.offset, 20).replace(/\n/g, "\\n");
@@ -69,7 +72,7 @@
             else
                 throw new Error(`${message} at ${error.cursor.line}:${error.cursor.column}\n${this.linePreview}`);
         }
-        skipWhitespace() {
+        skipWhitespace(includeInTrivia = false) {
             for (; this.offset < this.input.length; this.offset++) {
                 const c = this.input[this.offset];
                 if (c === '\n')
@@ -77,6 +80,8 @@
                 if (!(c === '\n' || c === '\r' || c === '\t' || c === ' '))
                     break;
             }
+            if (!includeInTrivia)
+                this.wsOffset = this.offset;
         }
         skipUntil(token) {
             const index = this.input.indexOf(token, this.offset);
@@ -143,7 +148,7 @@
                 return;
             this.moveWsOffset = false;
             while (true) {
-                this.skipWhitespace();
+                this.skipWhitespace(true);
                 if (this.input.startsWith(this.lineComment, this.offset)) {
                     this.skipLine();
                 }

@@ -84,6 +84,35 @@
                     return "?";
                 }
             }
+            get oneName() {
+                if (this.isPrimitiveType) {
+                    return this.typeKind.toString();
+                }
+                else if (this.isNumber) {
+                    return "number";
+                }
+                else if (this.isString) {
+                    return "string";
+                }
+                else if (this.isBoolean) {
+                    return "bool";
+                }
+                else if (this.isCharacter) {
+                    return "char";
+                }
+                else if (this.isClassOrInterface) {
+                    return this.className + (this.typeArguments.length === 0 ? "" : `<${this.typeArguments.map(x => x.repr()).join(", ")}>`);
+                }
+                else if (this.isGenerics) {
+                    return this.genericsName;
+                }
+                else if (this.isEnum) {
+                    return `${this.enumName}`;
+                }
+                else {
+                    return "?";
+                }
+            }
             // TODO / note: new instance is required because of NodeData... maybe rethink this approach?
             static get Void() { return new Type(TypeKind.Void); }
             static get Any() { return new Type(TypeKind.Any); }

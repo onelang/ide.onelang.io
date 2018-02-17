@@ -26,6 +26,10 @@ import { IParser } from "./Parsers/Common/IParser";
 import { CSharpParser } from "./Parsers/CSharpParser";
 import { RubyParser } from "./Parsers/RubyParser";
 import { ExtractCommentAttributes } from "./One/Transforms/ExtractCommentAttributes";
+import { PhpParser } from "./Parsers/PhpParser";
+import { ForceTemplateStrings } from "./One/Transforms/ForceTemplateStrings";
+import { WhileToForTransform } from "./One/Transforms/WhileToFor";
+import { ProcessTypeHints } from "./One/Transforms/ProcessTypeHints";
 
 declare var YAML: any;
 
@@ -63,6 +67,8 @@ export class OneCompiler {
             this.parser = new CSharpParser(programCode);
         } else if (langName === "ruby") {
             this.parser = new RubyParser(programCode);
+        } else if (langName === "php") {
+            this.parser = new PhpParser(programCode);
         } else {
             throw new Error(`[OneCompiler] Unsupported language: ${langName}`);
         }
@@ -70,8 +76,7 @@ export class OneCompiler {
         const schema = this.parser.parse();
         const overlaySchema = TypeScriptParser2.parseFile(overlayCode);
         const stdlibSchema = TypeScriptParser2.parseFile(stdlibCode);
-        this.genericTransformer = new GenericTransformer(<GenericTransformerFile>
-            YAML.parse(genericTransformerYaml));
+        this.genericTransformer = new GenericTransformer(<GenericTransformerFile> YAML.parse(genericTransformerYaml), schema.langData.langId);
 
         // TODO: hack
         overlaySchema.classes[this.parser.langData.literalClassNames.array].meta = { iterable: true };
@@ -95,7 +100,6 @@ export class OneCompiler {
         schema.sourceType = "program";
         overlaySchema.sourceType = "overlay";
         stdlibSchema.sourceType = "stdlib";
-
 
         this.stdlibCtx = new SchemaContext(stdlibSchema, "stdlib");
         new FixGenericAndEnumTypes().process(this.stdlibCtx.schema);
@@ -150,14 +154,34 @@ export class OneCompiler {
         new InferTypesTransform(this.schemaCtx).transform();
         this.schemaCtx.ensureTransforms("inferCharacterTypes");
         this.saveSchemaState(this.schemaCtx, `5_TypesInferredAgain`);
+
+        if (!this.schemaCtx.schema.langData.supportsTemplateStrings)
+            new ForceTemplateStrings().transform(this.schemaCtx);
+
+        if (!this.schemaCtx.schema.langData.supportsFor)
+            new WhileToForTransform().transform(this.schemaCtx);
+
+        new ProcessTypeHints().transform(this.schemaCtx);
+
+        this.saveSchemaState(this.schemaCtx, `6_PostProcess`);
     }
 
     preprocessLangFile(lang: LangFileSchema.LangFile) {
         for (const opDesc of Object.keys(lang.operators||{})) {
-            const opData = lang.operators[opDesc];
+            let opData = lang.operators[opDesc];
+            if (typeof opData === "string")
+                opData = lang.operators[opDesc] = { template: <string><any>opData };
+
             const opDescParts = opDesc.split(" ").filter(x => x !== "");
             if (opDescParts.length === 3)
                 [opData.leftType, opData.operator, opData.rightType] = opDescParts;
+        }
+
+        for (const classDesc of Object.values(lang.classes||{})) {
+            for (const methodName of Object.keys(classDesc.methods||{})) {
+                if (typeof classDesc.methods[methodName] === "string")
+                    classDesc.methods[methodName] = { template: <string><any>classDesc.methods[methodName] };
+            }
         }
     }
 
@@ -176,8 +200,9 @@ export class OneCompiler {
         return codeGen;
     }
 
-    compile(langCode: string, langName?: string, callTestMethod = true) {
+    compile(langCode: string, langName?: string, callTestMethod = true, genMeta = false) {
         const codeGen = this.getCodeGenerator(langCode, langName);
+        codeGen.model.config.genMeta = genMeta;
         const generatedCode = codeGen.generate(callTestMethod);
         return generatedCode;
     }

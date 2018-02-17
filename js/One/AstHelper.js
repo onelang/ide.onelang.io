@@ -11,8 +11,7 @@
     Object.defineProperty(exports, "__esModule", { value: true });
     const Ast_1 = require("./Ast");
     class AstHelper {
-        static replaceProperties(dest, src) {
-            const keep = ["nodeData"];
+        static replaceProperties(dest, src, keep = ["nodeData", "leadingTrivia"]) {
             dest.__proto__ = src.__proto__;
             for (var i in dest)
                 if (!keep.includes(i))
@@ -63,6 +62,19 @@
             const cls = lang.classes[methodPathParts[0]];
             const method = cls && cls.methods && cls.methods[methodPathParts[1]];
             return method;
+        }
+        static isBinaryOpModifies(expr) {
+            return ["=", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "<<=", ">>="].includes(expr.operator);
+        }
+        static getModifiedExpr(expr) {
+            if (expr.exprKind === "Unary")
+                return expr.operand;
+            else if (expr.exprKind === "Binary") {
+                const binaryExpr = expr;
+                if (AstHelper.isBinaryOpModifies(binaryExpr))
+                    return binaryExpr.left;
+            }
+            return null;
         }
     }
     exports.AstHelper = AstHelper;

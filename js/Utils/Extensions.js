@@ -18,7 +18,11 @@ Array.prototype.remove = function (item) {
     }
 };
 Array.prototype.sortBy = function (selector) {
-    return this.sort((a, b) => selector(a) - selector(b));
+    return this.sort((a, b) => {
+        const aProp = selector(a);
+        const bProp = selector(b);
+        return aProp < bProp ? -1 : aProp > bProp ? +1 : 0;
+    });
 };
 String.prototype.ucFirst = function () {
     return this.charAt(0).toUpperCase() + this.slice(1);

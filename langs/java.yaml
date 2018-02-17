@@ -79,9 +79,84 @@ classes:
     methods:
       raise:
         template: throw new Exception({{message}})
+  OneBigInteger:
+    type: "BigInteger"
+    includes: [java.math.BigInteger]
+    methods:
+      fromInt:
+        template: "BigInteger.valueOf({{value}})"
+  OneJson:
+    methods:
+      parse:
+        includes: [com.google.gson.*]
+        template: "new JsonParser().parse({{str}})"
+  OneJValue:
+    type: JsonElement
+    includes: [com.google.gson.*]
+    methods:
+      isObject: "{{self}}.isJsonObject()"
+      isArray: "{{self}}.isJsonArray()"
+      isString: "({{self}}.isJsonPrimitive() && ((JsonPrimitive){{self}}).isString())"
+      isNumber: "({{self}}.isJsonPrimitive() && ((JsonPrimitive){{self}}).isNumber())"
+      isBool: "({{self}}.isJsonPrimitive() && ((JsonPrimitive){{self}}).isBoolean())"
+      isNull: "{{self}}.isJsonNull()"
+      asString: "{{self}}.getAsString()"
+      asNumber: "{{self}}.getAsInt()"
+      asBool: "{{self}}.getAsBoolean()"
+      asObject: "{{self}}.getAsJsonObject()"
+      getArrayItems: "{{self}}.getAsJsonArray()"
+  OneJObject:
+    type: JsonObject
+    includes: [com.google.gson.*]
+    methods:
+      getProperties: "new ArrayList({{self}}.entrySet())"
+      get: "{{self}}.get({{name}})"
+  OneJProperty:
+    type: Map.Entry<String,JsonElement>
+    includes: [java.util.Map]
+    methods:
+      getName: "{{self}}.getKey()"
+      getValue: "{{self}}.getValue()"
+  One:
+    methods:
+      langName: '"Java"'
 operators:
-  OneString == OneString:
-    template: "{{gen(left)}}.equals({{gen(right)}})"
+  OneString == OneString: "{{gen(left)}}.equals({{gen(right)}})"
+  OneString != OneString: "!{{gen(left)}}.equals({{gen(right)}})"
+
+  OneBigInteger + OneBigInteger:  "{{gen(left)}}.add({{gen(right)}})"
+  OneBigInteger - OneBigInteger:  "{{gen(left)}}.subtract({{gen(right)}})"
+  OneBigInteger * OneBigInteger:  "{{gen(left)}}.multiply({{gen(right)}})"
+  OneBigInteger / OneBigInteger:  "{{gen(left)}}.divide({{gen(right)}})"
+  OneBigInteger % OneBigInteger:  "{{gen(left)}}.mod({{gen(right)}})"
+  OneBigInteger << OneBigInteger: "{{gen(left)}}.shiftLeft(({{gen(right)}}).intValue())"
+  OneBigInteger >> OneBigInteger: "{{gen(left)}}.shiftRight(({{gen(right)}}).intValue())"
+  OneBigInteger > OneBigInteger:  "{{gen(left)}}.compareTo({{gen(right)}}) > 0"
+  OneBigInteger < OneBigInteger:  "{{gen(left)}}.compareTo({{gen(right)}}) < 0"
+  OneBigInteger >= OneBigInteger: "{{gen(left)}}.compareTo({{gen(right)}}) >= 0"
+  OneBigInteger <= OneBigInteger: "{{gen(left)}}.compareTo({{gen(right)}}) <= 0"
+  OneBigInteger == OneBigInteger: "{{gen(left)}}.compareTo({{gen(right)}}) == 0"
+  OneBigInteger != OneBigInteger: "{{gen(left)}}.compareTo({{gen(right)}}) != 0"
+  OneBigInteger & OneBigInteger:  "{{gen(left)}}.and({{gen(right)}})"
+  OneBigInteger | OneBigInteger:  "{{gen(left)}}.or({{gen(right)}})"
+  OneBigInteger ^ OneBigInteger:  "{{gen(left)}}.xor({{gen(right)}})"
+
+  OneBigInteger + OneNumber:  "{{gen(left)}}.add(BigInteger.valueOf({{gen(right)}}))"
+  OneBigInteger - OneNumber:  "{{gen(left)}}.subtract(BigInteger.valueOf({{gen(right)}}))"
+  OneBigInteger * OneNumber:  "{{gen(left)}}.multiply(BigInteger.valueOf({{gen(right)}}))"
+  OneBigInteger / OneNumber:  "{{gen(left)}}.divide(BigInteger.valueOf({{gen(right)}}))"
+  OneBigInteger % OneNumber:  "{{gen(left)}}.mod(BigInteger.valueOf({{gen(right)}}))"
+  OneBigInteger << OneNumber: "{{gen(left)}}.shiftLeft({{gen(right)}})"
+  OneBigInteger >> OneNumber: "{{gen(left)}}.shiftRight({{gen(right)}})"
+  OneBigInteger > OneNumber:  "{{gen(left)}}.compareTo(BigInteger.valueOf({{gen(right)}})) > 0"
+  OneBigInteger < OneNumber:  "{{gen(left)}}.compareTo(BigInteger.valueOf({{gen(right)}})) < 0"
+  OneBigInteger >= OneNumber: "{{gen(left)}}.compareTo(BigInteger.valueOf({{gen(right)}})) >= 0"
+  OneBigInteger <= OneNumber: "{{gen(left)}}.compareTo(BigInteger.valueOf({{gen(right)}})) <= 0"
+  OneBigInteger == OneNumber: "{{gen(left)}}.compareTo(BigInteger.valueOf({{gen(right)}})) == 0"
+  OneBigInteger != OneNumber: "{{gen(left)}}.compareTo(BigInteger.valueOf({{gen(right)}})) != 0"
+  OneBigInteger & OneNumber:  "{{gen(left)}}.and(BigInteger.valueOf({{gen(right)}}))"
+  OneBigInteger | OneNumber:  "{{gen(left)}}.or(BigInteger.valueOf({{gen(right)}}))"
+  OneBigInteger ^ OneNumber:  "{{gen(left)}}.xor(BigInteger.valueOf({{gen(right)}}))"
 templates:
   testGenerator: |-
     class Program {
@@ -96,7 +171,7 @@ templates:
 
   main: |-
     {{for inc in includes|sep=\n}}
-      import {{inc}};
+      import {{inc.name}};
     {{/for}}
 
     {{for enum in enums|sep=\n}}
@@ -117,7 +192,7 @@ templates:
 
     {{for class in classes|sep=\n\n}}
       class {{genTypeArgs(class, "implements")}} {
-          {{if class.reflect}}
+          {{if class.attributes["reflect"]}}
             static {
                 OneReflect.publish({{class.name}}.class);
             }
@@ -141,6 +216,14 @@ templates:
           {{/for}}
       }
     {{/for}}
+
+    {{if mainBlock.statements.length > 0}}
+      class Program {
+          public static void main(String[] args) throws Exception {
+              {{genBody(mainBlock)}}
+          }
+      }
+    {{/if}}    
 
   genTypeArgs:
     args: [{name: class}, {name: inheritText}]
@@ -186,6 +269,14 @@ templates:
     args:
       - name: itemVar
     template: "{{typeName(itemVar.type)}} {{itemVar.outName}} = {{gen(itemVar.initializer)}}"
+  genWithParen:
+    args: [{ name: expr }]
+    template: |-
+      {{if expr.exprKind == "Binary" or expr.exprKind == "Conditional"}}
+        ({{gen(expr)}})
+      {{else}}
+        {{gen(expr)}}
+      {{/if}}
 expressions:
   call: |-
     {{gen(expr.method)}}(
@@ -234,9 +325,9 @@ expressions:
   templateString: |-
     {{for part in expr.parts|sep=" + " inline}}
       {{if part.literal|inline}}
-        "{{part.text}}"
+        "{{escapeQuotes(part.text)}}"
       {{else}}
-        {{gen(part.expr)}}
+        {{genWithParen(part.expr)}}
       {{/if}}
     {{/for}}
   foreach: |-

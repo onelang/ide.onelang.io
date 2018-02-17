@@ -1,5 +1,13 @@
 <html>
 <head>
+<!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-114302089-1"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'UA-114302089-1');
+    </script>
     <link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-base.css" />
     <link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-dark-theme.css" />
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
@@ -19,7 +27,8 @@
         .editorDiv .statusBar { color: white; height: 17px; margin: 2px 4px 0px 4px; font-family: arial; font-size: 13px; }
         span.label { padding: 1px 4px; border-radius: 5px; font-size: 11px; font-weight: bold; margin-right:3px; }
         span.label.success { background: #0a0; }
-        span.label.error { background: #f00; }
+        span.label.error { background: #c00; }
+        span.label.warning { background: #ab7d12; }
         span.label.waiting { background: #aaa; }
         span.result { position: relative; top: 1px; }
         .ace-monokai .ace_marker-layer .ace_step_multiline { background: rgba(102, 82, 0, 0.2); position: absolute; z-index: 3; }

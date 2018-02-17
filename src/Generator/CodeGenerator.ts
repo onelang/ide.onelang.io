@@ -38,11 +38,13 @@ namespace CodeGeneratorModel {
         methods: Method[];
         publicMethods: Method[];
         privateMethods: Method[];
+        attributes: { [name: string]: any };
     }
 
     export interface Interface {
         name: string;
         methods: Method[];
+        attributes: { [name: string]: any };
     }
 
     export interface Enum {
@@ -89,10 +91,11 @@ class CodeGeneratorModel {
     // temporary variable's name
     get result() { return this.tempVarHandler.current; }
 
-    includes: string[] = [];
+    includes: { name: string, source: string }[] = [];
     classes: CodeGeneratorModel.Class[] = [];
     interfaces: CodeGeneratorModel.Interface[] = [];
     enums: CodeGeneratorModel.Enum[] = [];
+    config = { genMeta: false };
 
     constructor(public generator: CodeGenerator) { }
 
@@ -141,7 +144,7 @@ class CodeGeneratorModel {
 
         const stdMethod = this.generator.stdlib.classes[className].methods[methodName];
         const methodArgs = stdMethod.parameters.map(x => x.outName);
-        const exprCallArgs = callExpr.arguments.map(x => this.gen(x));
+        const exprCallArgs = callExpr.arguments;
 
         if (methodArgs.length !== exprCallArgs.length)
             throw new Error(`Invalid argument count for '${generatorName}': expected: ${methodArgs.length}, actual: ${callExpr.arguments.length}.`);
@@ -344,13 +347,18 @@ export class CodeGenerator {
         const codeGenVars = new VariableSource("CodeGeneratorModel");
         codeGenVars.addCallback("includes", () => this.model.includes);
         codeGenVars.addCallback("classes", () => this.model.classes);
+        codeGenVars.addCallback("config", () => this.model.config);
+        // TODO: hack, see https://github.com/koczkatamas/onelang/issues/17
+        codeGenVars.addCallback("reflectedClasses", () => this.model.classes.filter(x => x.attributes["reflect"]));
         codeGenVars.addCallback("interfaces", () => this.model.interfaces);
         codeGenVars.addCallback("enums", () => this.model.enums);
+        codeGenVars.addCallback("mainBlock", () => this.schema.mainBlock);
         codeGenVars.addCallback("result", () => this.model.result);
-        for (const name of ["gen", "isIfBlock", "typeName", "hackPerlToVar", "escapeQuotes", "clsName"])
+        for (const name of ["gen", "isIfBlock", "typeName", "escapeQuotes", "clsName"])
             codeGenVars.setVariable(name, (...args) => this.model[name].apply(this.model, args));
         const varContext = new VariableContext([codeGenVars, this.templateVars]);
         this.templateGenerator = new TemplateGenerator(varContext);
+        this.templateGenerator.objectHook = obj => this.model.gen(<any> obj);
     }
 
     call(method: TemplateMethod, args: any[]) {
@@ -360,6 +368,7 @@ export class CodeGenerator {
     }
 
     getTypeName(type: one.Type): string {
+        if (!type) return "???";
         if (type.isClassOrInterface) {
             const classGen = this.model.generator.classGenerators[type.className];
             if (classGen) {
@@ -419,7 +428,7 @@ export class CodeGenerator {
     setupIncludes() {
         const includesCollector = new IncludesCollector(this.lang);
         includesCollector.process(this.schema);
-        this.model.includes = Array.from(includesCollector.includes);
+        this.model.includes = Array.from(includesCollector.includes).map(name => ({ name, source: (this.lang.includeSources||{})[name] || name })).sortBy(x => x.name);
     }
 
     setupEnums() {
@@ -488,9 +497,8 @@ export class CodeGenerator {
                 baseInterfaces: cls.baseInterfaces,
                 baseClasses: (cls.baseClass ? [cls.baseClass] : []).concat(cls.baseInterfaces),
                 attributes: cls.attributes,
-                // TODO: hack
+                // TODO: hack, see https://github.com/koczkatamas/onelang/issues/17
                 needsConstructor: constructor !== null || fields.some(x => x.visibility === "public" && !x.static && !!x.initializer),
-                reflect: cls.attributes["reflect"],
                 virtualMethods: methods.filter(x => x.attributes["virtual"]),
                 publicMethods: methods.filter(x => x.visibility === "public"),
                 protectedMethods: methods.filter(x => x.visibility === "protected"),
@@ -553,7 +561,7 @@ export class CodeGenerator {
     generate(callTestMethod: boolean) {
         const generatedNodes = this.call(this.templates["main"], []);
         this.generatedCode = "";
-        for (const tmplNode of generatedNodes) {
+        for (const tmplNode of generatedNodes||[]) {
             if (tmplNode.astNode && tmplNode.astNode.nodeData) {
                 const nodeData = tmplNode.astNode.nodeData;
                 let dstRange = nodeData.destRanges[this.lang.name];

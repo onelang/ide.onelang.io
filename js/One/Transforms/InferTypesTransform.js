@@ -28,7 +28,7 @@
         }
         static log(data) { console.log(`[GenericsMapping] ${data}`); }
         static create(cls, realClassType) {
-            if (cls.typeArguments.length !== realClassType.typeArguments.length) {
+            if (cls.typeArguments.length !== (realClassType.typeArguments || []).length) {
                 this.log(`Type argument count mismatch! '${cls.type.repr()}' <=> '${realClassType.repr()}'`);
                 return null;
             }
@@ -57,6 +57,7 @@
         constructor(schemaCtx) {
             super();
             this.schemaCtx = schemaCtx;
+            this.methodReturnTypes = [];
         }
         visitType(type) {
             super.visitType(type, null);
@@ -131,6 +132,8 @@
                 expr.valueType = Ast_1.OneAst.Type.Class("OneBoolean");
             else if (expr.left.valueType.isString)
                 expr.valueType = Ast_1.OneAst.Type.Class("OneString");
+            else
+                expr.valueType = expr.left.valueType; // TODO: also hack...
         }
         visitConditionalExpression(expr) {
             super.visitConditionalExpression(expr, null);
@@ -156,6 +159,8 @@
         }
         visitReturnStatement(stmt) {
             super.visitReturnStatement(stmt, null);
+            if (stmt.expression)
+                this.methodReturnTypes.push(stmt.expression.valueType);
         }
         visitUnaryExpression(expr) {
             this.visitExpression(expr.operand);
@@ -293,7 +298,18 @@
         }
         visitMethod(method) {
             method.type = Ast_1.OneAst.Type.Method(method.classRef.type, method.name);
+            this.methodReturnTypes = [];
             super.visitMethod(method, null);
+            // TODO: implement this for > 1        
+            if (method.returns.isAny && method.body) {
+                const returnTypes = this.methodReturnTypes.filter(x => !x.isAny);
+                if (returnTypes.length == 1) {
+                    method.returns = this.methodReturnTypes[0];
+                }
+                else if (returnTypes.length == 0) {
+                    method.returns = Ast_1.OneAst.Type.Void;
+                }
+            }
         }
         visitClass(cls) {
             cls.type = Ast_1.OneAst.Type.Class(cls.name, cls.typeArguments.map(t => Ast_1.OneAst.Type.Generics(t)));

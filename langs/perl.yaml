@@ -68,6 +68,14 @@ classes:
   OneReflect:
     includes: [one]
     template: "OneReflect"
+  OneBigInteger:
+    includes: [bigint]
+    methods:
+      fromInt:
+        template: "{{value}}"
+  One:
+    methods:
+      langName: '"Perl"'
 operators:
   OneString + OneString:
     template: "{{gen(left)}} . {{gen(right)}}"
@@ -124,7 +132,7 @@ templates:
     use warnings;
 
     {{for include in includes}}
-      use {{include}};
+      use {{include.name}};
     {{/for}}
 
     {{for enum in enums|sep=\n\n}}
@@ -192,7 +200,7 @@ templates:
         }
       {{/for}}
 
-      {{if class.reflect}}
+      {{if class.attributes["reflect"]}}
         OneReflect::setup_class(new OneClass("{{class.name}}", [
             {{for field in class.fields|sep=\n}}
               new OneField("{{field.name}}", {{if field.static}}1{{else}}0{{/if}}, "{{field.type}}"),
@@ -208,6 +216,8 @@ templates:
           ]));
       {{/if}}
     {{/for}}
+
+    {{genBody(mainBlock)}}
 
   genBody:
     args:
