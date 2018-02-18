@@ -17,8 +17,8 @@
             this.inputLangs = [];
             this.langs = {};
         }
-        init() {
-            this.manager = new LayoutManagerV2_1.LayoutManager();
+        init(container = null) {
+            this.manager = new LayoutManagerV2_1.LayoutManager(container);
             this.initLangComponents();
         }
         addLang(container, config) {
