@@ -17,7 +17,7 @@
     const AstHelper_1 = require("./One/AstHelper");
     const qs = {};
     location.search.substr(1).split('&').map(x => x.split('=')).forEach(x => qs[x[0]] = x[1]);
-    const serverhost = "server" in qs ? qs["server"] : "http://127.0.0.1:11111";
+    const serverhost = "server" in qs ? qs["server"] : location.hostname === "127.0.0.1" ? "http://127.0.0.1:11111" : null;
     const testPrgName = qs["input"] || "HelloWorldRaw";
     async function downloadTextFile(url) {
         const response = await (await fetch(url)).text();
@@ -136,7 +136,12 @@
             }
         }
         catch (e) {
-            statusBarError(langUi, e);
+            if (e.message === "Failed to fetch") {
+                statusBarError(langUi, `Compiler backend (${serverhost}) is unavailable!`);
+            }
+            else {
+                statusBarError(langUi, e);
+            }
             //langUi.changeHandler.setContent(`${e}`);
         }
     }
