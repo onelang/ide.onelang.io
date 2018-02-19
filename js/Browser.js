@@ -261,6 +261,9 @@
     }
     async function main() {
         initLayout();
+        $("#welcomeDoNotShowAgain").click(() => localStorage.setItem("doNotShowWelcome", "true"));
+        if (localStorage.getItem("doNotShowWelcome") !== "true")
+            $("#welcomeModal").modal();
         authTokenPromise = backendInit();
         await compileHelper.init();
         await setupTestProgram();
